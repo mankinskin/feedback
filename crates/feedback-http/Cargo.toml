@@ -1,0 +1,23 @@
+[package]
+name = "feedback-http"
+version = "0.1.0"
+edition = "2024"
+description = "HTTP REST API for feedback-api"
+
+[[bin]]
+name = "feedback-http"
+path = "src/main.rs"
+
+[lib]
+name = "feedback_http"
+path = "src/lib.rs"
+
+[dependencies]
+feedback-api = { path = "../feedback-api" }
+memory-kernel = { git = "https://github.com/mankinskin/memory-kernel", branch = "main"  }
+axum = { version = "0.8", features = ["macros"] }
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

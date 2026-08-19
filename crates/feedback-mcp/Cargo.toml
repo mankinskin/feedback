@@ -1,0 +1,23 @@
+[package]
+name = "feedback-mcp"
+version = "0.1.0"
+edition = "2024"
+description = "MCP server for feedback-api with direct store access"
+
+[[bin]]
+name = "feedback-mcp"
+path = "src/main.rs"
+
+[lib]
+name = "feedback_mcp"
+path = "src/lib.rs"
+
+[dependencies]
+feedback-api = { path = "../feedback-api" }
+memory-kernel = { git = "https://github.com/mankinskin/memory-kernel", branch = "main"   }
+rmcp = { version = "0.14", features = ["server", "transport-io"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
