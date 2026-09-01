@@ -37,7 +37,7 @@ use serde::{
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct IngestInput {
-    /// Concrete workspace path, repo root, .feedback store path, or path inside that store. Do not use omitted, empty, 'default', '.', or '..' for entity creation.
+    /// Concrete workspace path, repo root, .feedback store path, or path inside that store. Do not use omitted, empty, 'default', or '..' for entity creation; use '.' explicitly to target the MCP server process's current working directory.
     pub workspace: String,
     pub workspace_slug: String,
     pub source: String,
@@ -56,7 +56,7 @@ pub struct IngestInput {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct QueryInput {
-    /// Concrete workspace path, repo root, .feedback store path, or path inside that store. Do not use omitted, empty, 'default', '.', or '..' for entity creation.
+    /// Concrete workspace path, repo root, .feedback store path, or path inside that store. Do not use omitted, empty, 'default', or '..' for entity creation; use '.' explicitly to target the MCP server process's current working directory.
     pub workspace: String,
     pub workspace_slug: String,
     pub target: String,
@@ -263,7 +263,7 @@ mod tests {
 
     #[test]
     fn workspace_validation_rejects_ambient_aliases() {
-        for value in [None, Some(""), Some("default"), Some("."), Some("..")] {
+        for value in [None, Some(""), Some("default"), Some("..")] {
             let err =
                 memory_kernel::workspace::validate_explicit_workspace_selector(
                     value,
@@ -281,5 +281,13 @@ mod tests {
                 "error should state the requirement: {err_msg}"
             );
         }
+    }
+
+    #[test]
+    fn workspace_validation_accepts_current_directory() {
+        memory_kernel::workspace::validate_explicit_workspace_selector(Some(
+            ".",
+        ))
+        .expect("'.' should resolve to the MCP server's cwd");
     }
 }
