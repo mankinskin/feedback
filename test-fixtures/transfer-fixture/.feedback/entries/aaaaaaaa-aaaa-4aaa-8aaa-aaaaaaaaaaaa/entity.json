@@ -1,0 +1,24 @@
+{
+  "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+  "alias": "legacy-transfer-fixture-1",
+  "legacy_append_ordinal": 0,
+  "entry": {
+    "id": "legacy-transfer-fixture-1",
+    "schema_version": 2,
+    "source": "agent",
+    "target": {
+      "workspace": "demo-workspace",
+      "store": "ticket",
+      "entity": "transfer-fixture-ticket"
+    },
+    "rating": "helpful",
+    "note_text": null,
+    "note_kind": null,
+    "provenance": {
+      "author": "transfer-fixture",
+      "executed_at": "2026-01-01T00:00:00+00:00"
+    },
+    "status": "new"
+  },
+  "digest": "6f7f6cc6f7c9e5d4b6a5b2f9e3e0d3b26aab6f6c2c7a3a24b83b1d3e5f0e5b1a"
+}

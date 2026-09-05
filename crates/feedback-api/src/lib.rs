@@ -20,9 +20,15 @@ use serde::{
     Serialize,
 };
 
+pub mod analytics;
+
 mod feedback_io;
 mod feedback_store;
 mod frontend;
+
+pub mod canonical;
+pub mod migration;
+pub mod move_domain;
 
 use feedback_io::*;
 

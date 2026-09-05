@@ -99,6 +99,11 @@ impl EntityFeedbackStore {
         entry: FeedbackEntry,
     ) -> Result<FeedbackEntry, String> {
         self.ensure_workspace_urn(&entry.target)?;
+        let canonical = canonical::CanonicalFeedbackStore::new(self.root.clone());
+        if canonical.entities_dir().is_dir() {
+            canonical.append_new_entry(&self.workspace_slug, entry.clone())?;
+            return Ok(entry);
+        }
         append_ndjson(&self.entries_path(), &entry)?;
         Ok(entry)
     }
@@ -108,6 +113,15 @@ impl EntityFeedbackStore {
         urn: &EntityUrn,
     ) -> Result<Vec<FeedbackEntry>, String> {
         self.ensure_workspace_urn(urn)?;
+        let canonical = canonical::CanonicalFeedbackStore::new(self.root.clone());
+        if canonical.entities_dir().is_dir() {
+            return Ok(canonical
+                .list_entities()?
+                .into_iter()
+                .map(|entity| entity.entry)
+                .filter(|entry| &entry.target == urn)
+                .collect());
+        }
         let mut entries: Vec<FeedbackEntry> =
             read_ndjson::<FeedbackEntry>(&self.entries_path())?
                 .into_iter()
@@ -119,6 +133,24 @@ impl EntityFeedbackStore {
                 .cmp(&right.provenance.executed_at)
         });
         Ok(entries)
+    }
+
+    /// Produce a read-only analytics report for the current feedback-entry
+    /// log, retaining malformed-line totals as data-quality evidence.
+    pub fn analytics_at(
+        &self,
+        assessed_at: chrono::DateTime<Utc>,
+    ) -> Result<analytics::FeedbackAnalyticsReport, String> {
+        let canonical = canonical::CanonicalFeedbackStore::new(self.root.clone());
+        if canonical.entities_dir().is_dir() {
+            let entries = canonical
+                .list_entities()?
+                .into_iter()
+                .map(|entity| entity.entry)
+                .collect::<Vec<_>>();
+            return Ok(analytics::analyze_feedback_entries(&entries, assessed_at));
+        }
+        analytics::analyze_feedback_ndjson(&self.entries_path(), assessed_at)
     }
 
     /// Apply a retention policy to the persisted usage and rating logs using
