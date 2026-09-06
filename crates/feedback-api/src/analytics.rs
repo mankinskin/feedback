@@ -1,9 +1,4 @@
-use std::{
-    collections::BTreeMap,
-    fs,
-    io::{BufRead, BufReader},
-    path::Path,
-};
+use std::collections::BTreeMap;
 
 use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
@@ -98,7 +93,7 @@ pub struct RecurringIncident {
     pub resolution: IncidentResolution,
 }
 
-/// Read-only statistical result for an existing feedback NDJSON log.
+/// Read-only statistical result for canonical feedback entries.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FeedbackAnalyticsReport {
     pub valid_event_count: usize,
@@ -112,108 +107,7 @@ pub struct FeedbackAnalyticsReport {
     pub incidents: Vec<RecurringIncident>,
 }
 
-/// Analyze current-schema feedback records without rewriting, migrating, or
-/// canonicalizing the source log. A malformed JSON record or timestamp adds
-/// to the data-quality total and never contributes to a statistical field.
-pub fn analyze_feedback_ndjson(
-    path: &Path,
-    assessed_at: DateTime<Utc>,
-) -> Result<FeedbackAnalyticsReport, String> {
-    if !path.exists() {
-        return Ok(FeedbackAnalyticsReport::default());
-    }
-
-    let file = fs::File::open(path).map_err(|err| {
-        format!(
-            "failed to open feedback analytics log {}: {err}",
-            path.display()
-        )
-    })?;
-    let mut report = FeedbackAnalyticsReport::default();
-    let mut events = Vec::new();
-
-    for line in BufReader::new(file).lines() {
-        let line = line.map_err(|err| {
-            format!(
-                "failed reading feedback analytics log {}: {err}",
-                path.display()
-            )
-        })?;
-        if line.trim().is_empty() {
-            report.malformed_line_count += 1;
-            continue;
-        }
-        let Ok(entry) = serde_json::from_str::<FeedbackEntry>(&line) else {
-            report.malformed_line_count += 1;
-            continue;
-        };
-        let Ok(observed_at) = DateTime::parse_from_rfc3339(&entry.provenance.executed_at) else {
-            report.malformed_line_count += 1;
-            continue;
-        };
-        let observed_at = observed_at.with_timezone(&Utc);
-        if observed_at > assessed_at {
-            continue;
-        }
-
-        report.valid_event_count += 1;
-        increment(
-            &mut report.daily_volume,
-            observed_at.date_naive().to_string(),
-        );
-        increment(
-            &mut report.source_distribution,
-            entry.source.as_str().to_string(),
-        );
-        increment(
-            &mut report.target_store_distribution,
-            entry.target.store().to_string(),
-        );
-        increment(
-            &mut report.rating_distribution,
-            entry.rating.map_or_else(
-                || "unrated".to_string(),
-                |rating| rating.as_str().to_string(),
-            ),
-        );
-        report.first_observed_at = Some(
-            report
-                .first_observed_at
-                .map_or(observed_at, |first| first.min(observed_at)),
-        );
-        report.last_observed_at = Some(
-            report
-                .last_observed_at
-                .map_or(observed_at, |last| last.max(observed_at)),
-        );
-        events.push(FeedbackAnalyticEvent::new(
-            observed_at,
-            entry.rating,
-            Some(IncidentIdentity {
-                tool: entry.target.store().to_string(),
-                operation: Some(entry.target.entity().to_string()),
-            }),
-        ));
-    }
-
-    let identities: BTreeMap<_, _> = events
-        .iter()
-        .filter_map(|event| event.incident.as_ref())
-        .map(|identity| {
-            (
-                (identity.tool.clone(), identity.operation.clone()),
-                identity.clone(),
-            )
-        })
-        .collect();
-    report.incidents = identities
-        .into_values()
-        .filter_map(|identity| RecurringIncident::from_events(&events, &identity, assessed_at))
-        .collect();
-    Ok(report)
-}
-
-/// Analyze canonical feedback entries after a completed schema cutover.
+/// Analyze canonical feedback entries.
 pub fn analyze_feedback_entries(
     entries: &[FeedbackEntry],
     assessed_at: DateTime<Utc>,
@@ -373,8 +267,6 @@ fn tentative_resolution(
 
 #[cfg(test)]
 mod tests {
-    use std::fs;
-
     use chrono::TimeZone;
 
     use super::*;
@@ -393,25 +285,6 @@ mod tests {
         identity: Option<IncidentIdentity>,
     ) -> FeedbackAnalyticEvent {
         FeedbackAnalyticEvent::new(timestamp(day), Some(rating), identity)
-    }
-
-    fn persisted_entry(day: u32, rating: FeedbackRating, target_store: &str) -> FeedbackEntry {
-        FeedbackEntry {
-            id: format!("entry-{day}-{target_store}"),
-            schema_version: FEEDBACK_SCHEMA_VERSION,
-            source: FeedbackSource::TranscriptMined,
-            target: EntityUrn::new("default", target_store, "target-a").unwrap(),
-            rating: Some(rating),
-            note_text: None,
-            note_kind: None,
-            provenance: FeedbackProvenance::new(
-                Some("session-a".to_string()),
-                Some("copilot".to_string()),
-                Some(timestamp(day).to_rfc3339()),
-            )
-            .unwrap(),
-            status: FeedbackStatus::New,
-        }
     }
 
     #[test]
@@ -492,34 +365,5 @@ mod tests {
         let incident = RecurringIncident::from_events(&events, &identity, timestamp(11)).unwrap();
 
         assert_eq!(incident.resolution, IncidentResolution::Unresolved);
-    }
-
-    #[test]
-    fn analytics_report_counts_valid_records_and_malformed_lines_separately() {
-        let directory = tempfile::tempdir().unwrap();
-        let path = directory.path().join("entries.ndjson");
-        let first = persisted_entry(1, FeedbackRating::Helpful, "rule");
-        let second = persisted_entry(2, FeedbackRating::NotHelpful, "ticket");
-        fs::write(
-            &path,
-            format!(
-                "{}\n{{not json}}\n\n{}\n",
-                serde_json::to_string(&first).unwrap(),
-                serde_json::to_string(&second).unwrap(),
-            ),
-        )
-        .unwrap();
-
-        let report = analyze_feedback_ndjson(&path, timestamp(12)).unwrap();
-
-        assert_eq!(report.valid_event_count, 2);
-        assert_eq!(report.malformed_line_count, 2);
-        assert_eq!(report.daily_volume.get("2026-01-01"), Some(&1));
-        assert_eq!(report.source_distribution.get("transcript-mined"), Some(&2));
-        assert_eq!(report.target_store_distribution.get("rule"), Some(&1));
-        assert_eq!(report.rating_distribution.get("not-helpful"), Some(&1));
-        assert_eq!(report.first_observed_at, Some(timestamp(1)));
-        assert_eq!(report.last_observed_at, Some(timestamp(2)));
-        assert_eq!(report.incidents.len(), 1);
     }
 }

@@ -1,41 +1,17 @@
-use std::{
-    collections::HashMap,
-    fmt,
-    fs,
-    io::{
-        BufRead,
-        BufReader,
-        Write,
-    },
-    path::{
-        Path,
-        PathBuf,
-    },
-    str::FromStr,
-};
+use std::{fmt, path::PathBuf, str::FromStr};
 
 use chrono::Utc;
-use serde::{
-    Deserialize,
-    Serialize,
-};
+use serde::{Deserialize, Serialize};
 
 pub mod analytics;
 
-mod feedback_io;
 mod feedback_store;
 mod frontend;
 
 pub mod canonical;
-pub mod migration;
 pub mod move_domain;
 
-use feedback_io::*;
-
-pub use frontend::{
-    FrontendFeedbackSubmission,
-    ingest_frontend_feedback,
-};
+pub use frontend::{FrontendFeedbackSubmission, ingest_frontend_feedback};
 
 pub const FEEDBACK_SCHEMA_VERSION: u32 = 2;
 
@@ -58,10 +34,7 @@ impl FeedbackRating {
 }
 
 impl fmt::Display for FeedbackRating {
-    fn fmt(
-        &self,
-        f: &mut fmt::Formatter<'_>,
-    ) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.as_str())
     }
 }
@@ -98,10 +71,7 @@ impl FeedbackNoteKind {
 }
 
 impl fmt::Display for FeedbackNoteKind {
-    fn fmt(
-        &self,
-        f: &mut fmt::Formatter<'_>,
-    ) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.as_str())
     }
 }
@@ -143,10 +113,7 @@ impl FeedbackSource {
 }
 
 impl fmt::Display for FeedbackSource {
-    fn fmt(
-        &self,
-        f: &mut fmt::Formatter<'_>,
-    ) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.as_str())
     }
 }
@@ -159,8 +126,7 @@ impl FromStr for FeedbackSource {
             "agent" => Ok(Self::Agent),
             "user" => Ok(Self::User),
             "frontend" => Ok(Self::Frontend),
-            "transcript-mined" | "transcript_mined" | "mined" =>
-                Ok(Self::TranscriptMined),
+            "transcript-mined" | "transcript_mined" | "mined" => Ok(Self::TranscriptMined),
             "system" => Ok(Self::System),
             other => Err(format!(
                 "invalid feedback source '{other}', expected agent, user, frontend, transcript-mined, or system"
@@ -190,10 +156,7 @@ impl FeedbackStatus {
 }
 
 impl fmt::Display for FeedbackStatus {
-    fn fmt(
-        &self,
-        f: &mut fmt::Formatter<'_>,
-    ) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.as_str())
     }
 }
@@ -218,10 +181,7 @@ impl FeedbackAuthorKind {
 }
 
 impl fmt::Display for FeedbackAuthorKind {
-    fn fmt(
-        &self,
-        f: &mut fmt::Formatter<'_>,
-    ) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.as_str())
     }
 }
@@ -232,8 +192,7 @@ impl FromStr for FeedbackAuthorKind {
     fn from_str(value: &str) -> Result<Self, Self::Err> {
         match value.trim().to_ascii_lowercase().as_str() {
             "human" => Ok(Self::Human),
-            "privileged-agent" | "privileged_agent" | "agent" =>
-                Ok(Self::PrivilegedAgent),
+            "privileged-agent" | "privileged_agent" | "agent" => Ok(Self::PrivilegedAgent),
             other => Err(format!(
                 "invalid feedback author kind '{other}', expected human or privileged-agent"
             )),
@@ -335,10 +294,7 @@ impl FeedbackEntry {
         let note_text = normalize_optional(note_text);
         let note_kind = resolve_note_kind(note_text.as_deref(), note_kind)?;
         if rating.is_none() && note_text.is_none() {
-            return Err(
-                "feedback entry requires at least one of rating or note_text"
-                    .to_string(),
-            );
+            return Err("feedback entry requires at least one of rating or note_text".to_string());
         }
 
         Ok(Self {
@@ -366,15 +322,11 @@ pub struct IngestAuthor {
 }
 
 impl IngestAuthor {
-    pub fn new(
-        kind: FeedbackAuthorKind,
-        id: Option<String>,
-    ) -> Result<Self, String> {
+    pub fn new(kind: FeedbackAuthorKind, id: Option<String>) -> Result<Self, String> {
         let id = normalize_optional(id);
         if kind == FeedbackAuthorKind::PrivilegedAgent && id.is_none() {
             return Err(
-                "privileged-agent ingestion requires a non-empty agent_or_user_id"
-                    .to_string(),
+                "privileged-agent ingestion requires a non-empty agent_or_user_id".to_string(),
             );
         }
         Ok(Self { kind, id })
@@ -441,13 +393,13 @@ impl RuleFeedbackInput {
         let note_kind = resolve_note_kind(note_text.as_deref(), note_kind)?;
 
         match (session_id.as_ref(), agent_or_user_id.as_ref()) {
-            (Some(_), Some(_)) | (None, None) => {},
+            (Some(_), Some(_)) | (None, None) => {}
             _ => {
                 return Err(
                     "feedback session references require session_id and agent_or_user_id together"
                         .to_string(),
                 );
-            },
+            }
         }
 
         Ok(Self {
@@ -498,7 +450,7 @@ impl FeedbackSummary {
                 FeedbackRating::Mixed => summary.mixed_count += 1,
                 FeedbackRating::NotHelpful => {
                     summary.not_helpful_count += 1;
-                },
+                }
             }
 
             if event.has_note() {
@@ -552,33 +504,21 @@ impl EntityUrn {
         format!("ce://{}/{}/{}", self.workspace, self.store, self.entity)
     }
 
-    pub fn rule(
-        workspace: impl Into<String>,
-        entity: impl Into<String>,
-    ) -> Result<Self, String> {
+    pub fn rule(workspace: impl Into<String>, entity: impl Into<String>) -> Result<Self, String> {
         Self::new(workspace, "rule", entity)
     }
 
-    pub fn spec(
-        workspace: impl Into<String>,
-        entity: impl Into<String>,
-    ) -> Result<Self, String> {
+    pub fn spec(workspace: impl Into<String>, entity: impl Into<String>) -> Result<Self, String> {
         Self::new(workspace, "spec", entity)
     }
 
-    pub fn ticket(
-        workspace: impl Into<String>,
-        entity: impl Into<String>,
-    ) -> Result<Self, String> {
+    pub fn ticket(workspace: impl Into<String>, entity: impl Into<String>) -> Result<Self, String> {
         Self::new(workspace, "ticket", entity)
     }
 }
 
 impl fmt::Display for EntityUrn {
-    fn fmt(
-        &self,
-        f: &mut fmt::Formatter<'_>,
-    ) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.as_str())
     }
 }
@@ -627,10 +567,7 @@ impl EntityUsageEvent {
         }
     }
 
-    pub fn with_author(
-        urn: EntityUrn,
-        author: &IngestAuthor,
-    ) -> Self {
+    pub fn with_author(urn: EntityUrn, author: &IngestAuthor) -> Self {
         Self {
             timestamp: Utc::now().to_rfc3339(),
             urn,
@@ -680,13 +617,8 @@ impl EntityRatingInput {
         session_id: Option<String>,
         agent_or_user_id: Option<String>,
     ) -> Result<Self, String> {
-        let input = RuleFeedbackInput::new(
-            rating,
-            note_text,
-            note_kind,
-            session_id,
-            agent_or_user_id,
-        )?;
+        let input =
+            RuleFeedbackInput::new(rating, note_text, note_kind, session_id, agent_or_user_id)?;
 
         Ok(Self {
             rating: input.rating,
@@ -697,10 +629,7 @@ impl EntityRatingInput {
         })
     }
 
-    pub fn into_event(
-        self,
-        urn: EntityUrn,
-    ) -> EntityRatingEvent {
+    pub fn into_event(self, urn: EntityUrn) -> EntityRatingEvent {
         EntityRatingEvent {
             timestamp: Utc::now().to_rfc3339(),
             urn,
@@ -793,8 +722,7 @@ impl EntityFeedbackSummary {
     }
 
     pub fn has_low_rating(&self) -> bool {
-        self.not_helpful_count > 0
-            && self.not_helpful_count >= self.helpful_count
+        self.not_helpful_count > 0 && self.not_helpful_count >= self.helpful_count
     }
 
     pub fn has_unresolved_notes(&self) -> bool {
@@ -802,74 +730,12 @@ impl EntityFeedbackSummary {
     }
 }
 
-#[derive(Debug, Default, Clone)]
-pub struct EntityFeedbackCore {
-    usage_events: Vec<EntityUsageEvent>,
-    rating_events: Vec<EntityRatingEvent>,
-}
-const FEEDBACK_CORE_DIR: &str = "feedback-core";
-const FEEDBACK_CORE_USAGE_FILE: &str = "usage-events.ndjson";
-const FEEDBACK_CORE_RATING_FILE: &str = "rating-events.ndjson";
-const FEEDBACK_ENTRY_FILE: &str = "entries.ndjson";
-
-/// Baseline retention policy for the persisted feedback logs. A `None` bound
-/// leaves that dimension unconstrained. `max_events` is applied per event kind
-/// (usage / rating) after the age filter, keeping the most recent events.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct RetentionPolicy {
-    pub max_age: Option<chrono::Duration>,
-    pub max_events: Option<usize>,
-}
-
-impl RetentionPolicy {
-    pub fn max_age_days(days: i64) -> Self {
-        Self {
-            max_age: Some(chrono::Duration::days(days)),
-            max_events: None,
-        }
-    }
-
-    pub fn max_events(count: usize) -> Self {
-        Self {
-            max_age: None,
-            max_events: Some(count),
-        }
-    }
-}
-
-/// Retained/removed counts for a single event kind after applying retention.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct RetentionKindOutcome {
-    pub retained: usize,
-    pub removed: usize,
-}
-
-/// Combined retention outcome across both persisted event kinds.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct RetentionOutcome {
-    pub usage: RetentionKindOutcome,
-    pub rating: RetentionKindOutcome,
-}
-
-impl RetentionOutcome {
-    pub fn total_removed(&self) -> usize {
-        self.usage.removed + self.rating.removed
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EntityFeedbackStore {
     root: PathBuf,
-    workspace_slug: String,
 }
 
-#[cfg(test)]
-mod feedback_tests;
-
-fn normalize_required(
-    value: String,
-    field: &str,
-) -> Result<String, String> {
+fn normalize_required(value: String, field: &str) -> Result<String, String> {
     let normalized = value.trim();
     if normalized.is_empty() {
         return Err(format!("entity urn {field} segment cannot be empty"));
@@ -880,4 +746,22 @@ fn normalize_required(
         ));
     }
     Ok(normalized.to_string())
+}
+
+fn normalize_optional(value: Option<String>) -> Option<String> {
+    value
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+fn resolve_note_kind(
+    note_text: Option<&str>,
+    note_kind: Option<FeedbackNoteKind>,
+) -> Result<Option<FeedbackNoteKind>, String> {
+    match (note_text, note_kind) {
+        (Some(_), Some(kind)) => Ok(Some(kind)),
+        (Some(_), None) => Ok(Some(FeedbackNoteKind::Note)),
+        (None, None) => Ok(None),
+        (None, Some(_)) => Err("feedback note kind requires feedback note text".to_string()),
+    }
 }

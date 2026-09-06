@@ -1,11 +1,6 @@
 use crate::{
-    EntityFeedbackStore,
-    EntityRatingEvent,
-    EntityRatingSubmission,
-    EntityUrn,
-    FeedbackNoteKind,
-    FeedbackRating,
-    IngestAuthor,
+    EntityFeedbackStore, EntityUrn, FeedbackEntry, FeedbackNoteKind, FeedbackProvenance,
+    FeedbackRating, FeedbackSource,
 };
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -20,15 +15,20 @@ pub struct FrontendFeedbackSubmission {
 pub fn ingest_frontend_feedback(
     store: &EntityFeedbackStore,
     submission: FrontendFeedbackSubmission,
-) -> Result<EntityRatingEvent, String> {
-    let author = IngestAuthor::human(Some(submission.user_id.clone()))?;
-    let mut rating = EntityRatingSubmission::new(submission.rating);
-    rating.note_text = submission.comments;
-    rating.note_kind = Some(FeedbackNoteKind::Note);
-    rating.session_id =
-        Some(format!("frontend-{}", submission.source_frontend));
-    rating.agent_or_user_id = Some(submission.user_id);
-    store.ingest_rating(&author, submission.target_entity_urn, rating)
+) -> Result<FeedbackEntry, String> {
+    let entry = FeedbackEntry::new(
+        FeedbackSource::Frontend,
+        submission.target_entity_urn,
+        Some(submission.rating),
+        submission.comments,
+        Some(FeedbackNoteKind::Note),
+        FeedbackProvenance::new(
+            Some(format!("frontend-{}", submission.source_frontend)),
+            Some(submission.user_id),
+            None,
+        )?,
+    )?;
+    store.record_entry(entry)
 }
 
 #[cfg(test)]
@@ -38,12 +38,8 @@ mod tests {
     #[test]
     fn frontend_submission_is_persisted_as_rating_event() {
         let dir = tempfile::tempdir().expect("tempdir");
-        let store = EntityFeedbackStore::new(dir.path(), "test-workspace")
-            .expect("store");
-        let ticket_urn =
-            EntityUrn::ticket("test-workspace", "ticket-456").expect("urn");
-
-        store.record_usage(ticket_urn.clone()).expect("usage");
+        let store = EntityFeedbackStore::new(dir.path());
+        let ticket_urn = EntityUrn::ticket("test-workspace", "ticket-456").expect("urn");
 
         let submission = FrontendFeedbackSubmission {
             source_frontend: "ticket-viewer".to_string(),
@@ -56,6 +52,5 @@ mod tests {
 
         let summary = store.summary_for(&ticket_urn).expect("summary");
         assert_eq!(summary.helpful_count, 1);
-        assert_eq!(summary.usage_count, 1);
     }
 }

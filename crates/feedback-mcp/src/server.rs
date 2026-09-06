@@ -1,4 +1,4 @@
-use std::{path::PathBuf, str::FromStr};
+use std::str::FromStr;
 
 use chrono::{DateTime, Utc};
 use feedback_api::{
@@ -19,7 +19,6 @@ use serde::{Deserialize, Serialize};
 pub struct IngestInput {
     /// Concrete workspace path, repo root, .feedback store path, or path inside that store. Do not use omitted, empty, 'default', or '..' for entity creation; use '.' explicitly to target the MCP server process's current working directory.
     pub workspace: String,
-    pub workspace_slug: String,
     pub source: String,
     pub target: String,
     #[serde(default)]
@@ -38,7 +37,6 @@ pub struct IngestInput {
 pub struct QueryInput {
     /// Concrete workspace path, repo root, .feedback store path, or path inside that store. Do not use omitted, empty, 'default', or '..' for entity creation; use '.' explicitly to target the MCP server process's current working directory.
     pub workspace: String,
-    pub workspace_slug: String,
     pub target: String,
 }
 
@@ -46,7 +44,6 @@ pub struct QueryInput {
 pub struct AnalyticsInput {
     /// Concrete workspace path, repo root, .feedback store path, or path inside that store.
     pub workspace: String,
-    pub workspace_slug: String,
     /// RFC3339 assessment time; defaults to the current time.
     #[serde(default)]
     pub assessed_at: Option<String>,
@@ -76,17 +73,13 @@ pub struct FeedbackServer {
 }
 
 impl FeedbackServer {
-    pub fn new(_store_root: PathBuf, _workspace_slug: String) -> Self {
+    pub fn new() -> Self {
         Self {
             tool_router: Self::tool_router(),
         }
     }
 
-    fn store_for(
-        &self,
-        workspace: &str,
-        workspace_slug: &str,
-    ) -> Result<EntityFeedbackStore, McpError> {
+    fn store_for(&self, workspace: &str) -> Result<EntityFeedbackStore, McpError> {
         let workspace =
             memory_kernel::workspace::validate_explicit_workspace_selector(Some(workspace))
                 .map_err(|err| McpError::invalid_params(err.to_string(), None))?;
@@ -94,8 +87,7 @@ impl FeedbackServer {
             std::path::Path::new(workspace),
             ".feedback",
         );
-        EntityFeedbackStore::new(root, workspace_slug.to_string())
-            .map_err(|err| McpError::invalid_params(err, None))
+        Ok(EntityFeedbackStore::new(root))
     }
 
     fn json_result<T: Serialize>(value: &T) -> Result<CallToolResult, McpError> {
@@ -137,7 +129,7 @@ impl FeedbackServer {
         &self,
         Parameters(input): Parameters<IngestInput>,
     ) -> Result<CallToolResult, McpError> {
-        let store = self.store_for(&input.workspace, &input.workspace_slug)?;
+        let store = self.store_for(&input.workspace)?;
         let source = FeedbackSource::from_str(&input.source)
             .map_err(|err| McpError::invalid_params(err, None))?;
         let target = EntityUrn::from_str(&input.target)
@@ -170,7 +162,7 @@ impl FeedbackServer {
         &self,
         Parameters(input): Parameters<QueryInput>,
     ) -> Result<CallToolResult, McpError> {
-        let store = self.store_for(&input.workspace, &input.workspace_slug)?;
+        let store = self.store_for(&input.workspace)?;
         let target = EntityUrn::from_str(&input.target)
             .map_err(|err| McpError::invalid_params(err, None))?;
         let entries = store
@@ -198,7 +190,7 @@ impl FeedbackServer {
         &self,
         Parameters(input): Parameters<QueryInput>,
     ) -> Result<CallToolResult, McpError> {
-        let store = self.store_for(&input.workspace, &input.workspace_slug)?;
+        let store = self.store_for(&input.workspace)?;
         let target = EntityUrn::from_str(&input.target)
             .map_err(|err| McpError::invalid_params(err, None))?;
         let summary = store
@@ -215,7 +207,7 @@ impl FeedbackServer {
         &self,
         Parameters(input): Parameters<AnalyticsInput>,
     ) -> Result<CallToolResult, McpError> {
-        let store = self.store_for(&input.workspace, &input.workspace_slug)?;
+        let store = self.store_for(&input.workspace)?;
         let assessed_at = input
             .assessed_at
             .map(|value| {
@@ -244,7 +236,7 @@ impl FeedbackServer {
         &self,
         Parameters(input): Parameters<QueryInput>,
     ) -> Result<CallToolResult, McpError> {
-        let store = self.store_for(&input.workspace, &input.workspace_slug)?;
+        let store = self.store_for(&input.workspace)?;
         let target = EntityUrn::from_str(&input.target)
             .map_err(|err| McpError::invalid_params(err, None))?;
         let entry = FeedbackEntry::new(
@@ -391,10 +383,8 @@ impl ServerHandler for FeedbackServer {
 }
 
 pub async fn run_mcp_server(
-    store_root: PathBuf,
-    workspace_slug: String,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let service = FeedbackServer::new(store_root, workspace_slug)
+    let service = FeedbackServer::new()
         .serve(stdio())
         .await?;
     service.waiting().await?;
@@ -421,7 +411,7 @@ mod tests {
 
     #[test]
     fn advertises_tools_capability() {
-        let server = FeedbackServer::new(PathBuf::new(), "default".to_string());
+        let server = FeedbackServer::new();
 
         assert!(server.get_info().capabilities.tools.is_some());
     }
@@ -452,8 +442,7 @@ mod tests {
     #[tokio::test]
     async fn analytics_tool_returns_shared_report_and_rejects_invalid_time() {
         let directory = tempfile::tempdir().unwrap();
-        let store =
-            EntityFeedbackStore::new(directory.path().join(".feedback"), "default").unwrap();
+        let store = EntityFeedbackStore::new(directory.path().join(".feedback"));
         let entry = FeedbackEntry::new(
             FeedbackSource::Agent,
             EntityUrn::rule("default", "rule-a").unwrap(),
@@ -469,10 +458,9 @@ mod tests {
         )
         .unwrap();
         store.record_entry(entry).unwrap();
-        let server = FeedbackServer::new(PathBuf::new(), "default".to_string());
+        let server = FeedbackServer::new();
         let input = AnalyticsInput {
             workspace: directory.path().to_string_lossy().to_string(),
-            workspace_slug: "default".to_string(),
             assessed_at: Some(
                 Utc.with_ymd_and_hms(2026, 1, 2, 0, 0, 0)
                     .unwrap()
@@ -487,7 +475,6 @@ mod tests {
         let error = server
             .feedback_analytics(Parameters(AnalyticsInput {
                 workspace: directory.path().to_string_lossy().to_string(),
-                workspace_slug: "default".to_string(),
                 assessed_at: Some("not-a-time".to_string()),
             }))
             .await

@@ -9,20 +9,11 @@
 
 use std::{
     fs,
-    path::{
-        Path,
-        PathBuf,
-    },
+    path::{Path, PathBuf},
 };
 
-use serde::{
-    Deserialize,
-    Serialize,
-};
-use sha2::{
-    Digest,
-    Sha256,
-};
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::FeedbackEntry;
@@ -37,8 +28,7 @@ pub const FEEDBACK_STORE_INDEX_DIR: &str = ".feedback";
 /// Fixed namespace used to derive a canonical UUID from a non-UUID legacy
 /// feedback id plus a workspace slug. Never changes once published.
 const FEEDBACK_LEGACY_NAMESPACE: Uuid = Uuid::from_bytes([
-    0x6f, 0x1e, 0x3a, 0x02, 0x9c, 0x77, 0x4b, 0x21, 0x8e, 0x54, 0x2d, 0x9a,
-    0x11, 0x7c, 0x5f, 0x3d,
+    0x6f, 0x1e, 0x3a, 0x02, 0x9c, 0x77, 0x4b, 0x21, 0x8e, 0x54, 0x2d, 0x9a, 0x11, 0x7c, 0x5f, 0x3d,
 ]);
 
 /// A canonical, UUID-keyed feedback entity: the persisted [`FeedbackEntry`]
@@ -66,8 +56,7 @@ impl CanonicalFeedbackEntity {
         legacy_append_ordinal: u64,
         entry: FeedbackEntry,
     ) -> Self {
-        let digest =
-            compute_digest(&entry, alias.as_deref(), legacy_append_ordinal);
+        let digest = compute_digest(&entry, alias.as_deref(), legacy_append_ordinal);
         Self {
             id,
             alias,
@@ -98,9 +87,7 @@ pub fn compute_digest(
     legacy_append_ordinal: u64,
 ) -> String {
     let mut hasher = Sha256::new();
-    hasher.update(
-        serde_json::to_vec(entry).expect("feedback entry always serializes"),
-    );
+    hasher.update(serde_json::to_vec(entry).expect("feedback entry always serializes"));
     if let Some(alias) = alias {
         hasher.update(alias.as_bytes());
     }
@@ -111,10 +98,7 @@ pub fn compute_digest(
 /// Resolve the canonical UUID for a legacy feedback id. A legacy id that
 /// parses as a UUID keeps that UUID; otherwise a UUIDv5 is derived from the
 /// fixed feedback namespace, the workspace slug, and the legacy id.
-pub fn canonical_entity_id(
-    workspace_slug: &str,
-    legacy_id: &str,
-) -> Uuid {
+pub fn canonical_entity_id(workspace_slug: &str, legacy_id: &str) -> Uuid {
     match Uuid::parse_str(legacy_id) {
         Ok(uuid) => uuid,
         Err(_) => Uuid::new_v5(
@@ -156,25 +140,16 @@ impl CanonicalFeedbackStore {
         self.store_root.join(FEEDBACK_ENTITY_SUBDIR)
     }
 
-    pub fn entity_dir(
-        &self,
-        id: &Uuid,
-    ) -> PathBuf {
+    pub fn entity_dir(&self, id: &Uuid) -> PathBuf {
         self.entities_dir().join(id.to_string())
     }
 
-    pub fn entity_path(
-        &self,
-        id: &Uuid,
-    ) -> PathBuf {
+    pub fn entity_path(&self, id: &Uuid) -> PathBuf {
         self.entity_dir(id).join(FEEDBACK_ENTITY_FILE_NAME)
     }
 
     /// Atomically persist a canonical entity (write-tmp-then-rename).
-    pub fn write_entity(
-        &self,
-        entity: &CanonicalFeedbackEntity,
-    ) -> Result<(), String> {
+    pub fn write_entity(&self, entity: &CanonicalFeedbackEntity) -> Result<(), String> {
         let dir = self.entity_dir(&entity.id);
         fs::create_dir_all(&dir).map_err(|err| {
             format!(
@@ -184,9 +159,8 @@ impl CanonicalFeedbackStore {
         })?;
         let path = dir.join(FEEDBACK_ENTITY_FILE_NAME);
         let tmp_path = dir.join(format!("{FEEDBACK_ENTITY_FILE_NAME}.tmp"));
-        let bytes = serde_json::to_vec_pretty(entity).map_err(|err| {
-            format!("failed to serialize canonical feedback entity: {err}")
-        })?;
+        let bytes = serde_json::to_vec_pretty(entity)
+            .map_err(|err| format!("failed to serialize canonical feedback entity: {err}"))?;
         fs::write(&tmp_path, bytes).map_err(|err| {
             format!(
                 "failed to write feedback entity {}: {err}",
@@ -201,17 +175,13 @@ impl CanonicalFeedbackStore {
         })
     }
 
-    pub fn read_entity(
-        &self,
-        id: &Uuid,
-    ) -> Result<Option<CanonicalFeedbackEntity>, String> {
+    pub fn read_entity(&self, id: &Uuid) -> Result<Option<CanonicalFeedbackEntity>, String> {
         let path = self.entity_path(id);
         if !path.is_file() {
             return Ok(None);
         }
-        let bytes = fs::read(&path).map_err(|err| {
-            format!("failed to read feedback entity {}: {err}", path.display())
-        })?;
+        let bytes = fs::read(&path)
+            .map_err(|err| format!("failed to read feedback entity {}: {err}", path.display()))?;
         serde_json::from_slice(&bytes).map(Some).map_err(|err| {
             format!(
                 "invalid canonical feedback entity {}: {err}",
@@ -220,10 +190,7 @@ impl CanonicalFeedbackStore {
         })
     }
 
-    pub fn remove_entity(
-        &self,
-        id: &Uuid,
-    ) -> Result<(), String> {
+    pub fn remove_entity(&self, id: &Uuid) -> Result<(), String> {
         let dir = self.entity_dir(id);
         if dir.is_dir() {
             fs::remove_dir_all(&dir).map_err(|err| {
@@ -243,15 +210,14 @@ impl CanonicalFeedbackStore {
             return Ok(Vec::new());
         }
         let mut entities = Vec::new();
-        for entry in fs::read_dir(&dir).map_err(|err| {
-            format!("failed to list feedback entities {}: {err}", dir.display())
-        })? {
+        for entry in fs::read_dir(&dir)
+            .map_err(|err| format!("failed to list feedback entities {}: {err}", dir.display()))?
+        {
             let entry = entry.map_err(|err| err.to_string())?;
             if !entry.file_type().map_err(|err| err.to_string())?.is_dir() {
                 continue;
             }
-            let Some(name) = entry.file_name().to_str().map(str::to_string)
-            else {
+            let Some(name) = entry.file_name().to_str().map(str::to_string) else {
                 continue;
             };
             let Ok(id) = Uuid::parse_str(&name) else {

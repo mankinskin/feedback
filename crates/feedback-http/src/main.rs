@@ -20,7 +20,6 @@ async fn main() {
 
     let state = AppState {
         store_root: resolve_store_root(),
-        workspace_slug: resolve_workspace_slug(),
     };
     let addr = resolve_addr();
 
@@ -46,11 +45,6 @@ fn resolve_store_root() -> PathBuf {
             std::process::exit(1);
         },
     }
-}
-
-fn resolve_workspace_slug() -> String {
-    std::env::var("FEEDBACK_WORKSPACE_SLUG")
-        .unwrap_or_else(|_| "default".to_string())
 }
 
 fn resolve_addr() -> SocketAddr {

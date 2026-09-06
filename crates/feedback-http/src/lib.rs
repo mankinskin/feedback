@@ -31,13 +31,11 @@ use serde::{
 #[derive(Clone)]
 pub struct AppState {
     pub store_root: PathBuf,
-    pub workspace_slug: String,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct IngestRequest {
     pub workspace: Option<String>,
-    pub workspace_slug: Option<String>,
     pub source: String,
     pub target: String,
     pub rating: Option<String>,
@@ -50,7 +48,6 @@ pub struct IngestRequest {
 #[derive(Debug, Deserialize)]
 pub struct QueryRequest {
     pub workspace: Option<String>,
-    pub workspace_slug: Option<String>,
     pub target: String,
 }
 
@@ -62,7 +59,6 @@ pub struct ErrorResponse {
 fn store_for(
     state: &AppState,
     workspace: Option<&str>,
-    workspace_slug: Option<&str>,
 ) -> Result<EntityFeedbackStore, String> {
     let root = if let Some(workspace) = workspace {
         let workspace =
@@ -77,10 +73,7 @@ fn store_for(
     } else {
         state.store_root.clone()
     };
-    let slug = workspace_slug
-        .map(str::to_string)
-        .unwrap_or_else(|| state.workspace_slug.clone());
-    EntityFeedbackStore::new(root, slug)
+    Ok(EntityFeedbackStore::new(root))
 }
 
 pub fn app(state: AppState) -> Router {
@@ -103,11 +96,7 @@ async fn ingest(
     Json(req): Json<IngestRequest>,
 ) -> Result<Json<FeedbackEntry>, (axum::http::StatusCode, Json<ErrorResponse>)>
 {
-    let store = store_for(
-        &state,
-        req.workspace.as_deref(),
-        req.workspace_slug.as_deref(),
-    )
+    let store = store_for(&state, req.workspace.as_deref())
     .map_err(invalid)?;
     let source = FeedbackSource::from_str(&req.source).map_err(invalid)?;
     let target = EntityUrn::from_str(&req.target).map_err(invalid)?;
@@ -138,11 +127,7 @@ async fn inbox(
     Json<Vec<FeedbackEntry>>,
     (axum::http::StatusCode, Json<ErrorResponse>),
 > {
-    let store = store_for(
-        &state,
-        req.workspace.as_deref(),
-        req.workspace_slug.as_deref(),
-    )
+    let store = store_for(&state, req.workspace.as_deref())
     .map_err(invalid)?;
     let target = EntityUrn::from_str(&req.target).map_err(invalid)?;
     let entries = store.entries_for(&target).map_err(internal)?;
@@ -156,11 +141,7 @@ async fn summary(
     Json<serde_json::Value>,
     (axum::http::StatusCode, Json<ErrorResponse>),
 > {
-    let store = store_for(
-        &state,
-        req.workspace.as_deref(),
-        req.workspace_slug.as_deref(),
-    )
+    let store = store_for(&state, req.workspace.as_deref())
     .map_err(invalid)?;
     let target = EntityUrn::from_str(&req.target).map_err(invalid)?;
     let summary = store.summary_for(&target).map_err(internal)?;
@@ -172,11 +153,7 @@ async fn mine(
     Json(req): Json<QueryRequest>,
 ) -> Result<Json<FeedbackEntry>, (axum::http::StatusCode, Json<ErrorResponse>)>
 {
-    let store = store_for(
-        &state,
-        req.workspace.as_deref(),
-        req.workspace_slug.as_deref(),
-    )
+    let store = store_for(&state, req.workspace.as_deref())
     .map_err(invalid)?;
     let target = EntityUrn::from_str(&req.target).map_err(invalid)?;
     let entry = FeedbackEntry::new(

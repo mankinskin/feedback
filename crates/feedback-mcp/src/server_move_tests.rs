@@ -64,7 +64,7 @@ async fn move_preflight_apply_resume_rollback_routes_preserve_journal_semantics(
     std::fs::create_dir_all(target_workspace.join(".feedback")).expect("target feedback dir");
 
     let entity_id = seed_entity(&source_workspace);
-    let server = FeedbackServer::new(source_workspace.clone(), "demo".to_string());
+    let server = FeedbackServer::new();
 
     let preflight = server
         .feedback_move_preflight(Parameters(FeedbackMoveInput {

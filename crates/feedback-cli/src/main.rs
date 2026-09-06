@@ -20,9 +20,7 @@ struct Cli {
 enum Command {
     Ingest {
         #[arg(long)]
-        store_root: PathBuf,
-        #[arg(long)]
-        workspace_slug: String,
+        workspace: PathBuf,
         #[arg(long)]
         source: String,
         #[arg(long)]
@@ -40,26 +38,20 @@ enum Command {
     },
     Inbox {
         #[arg(long)]
-        store_root: PathBuf,
-        #[arg(long)]
-        workspace_slug: String,
+        workspace: PathBuf,
         #[arg(long)]
         target: String,
     },
     Summary {
         #[arg(long)]
-        store_root: PathBuf,
-        #[arg(long)]
-        workspace_slug: String,
+        workspace: PathBuf,
         #[arg(long)]
         target: String,
     },
     /// Produce a read-only analytics report for current feedback entries.
     Analytics {
         #[arg(long)]
-        store_root: PathBuf,
-        #[arg(long)]
-        workspace_slug: String,
+        workspace: PathBuf,
         /// RFC3339 assessment time; defaults to the current time.
         #[arg(long)]
         assessed_at: Option<String>,
@@ -67,19 +59,9 @@ enum Command {
         #[arg(long, default_value = "json")]
         format: String,
     },
-    /// Migrate valid legacy feedback entries to canonical schema storage and
-    /// permanently remove the source log, reporting only aggregate discards.
-    Cutover {
-        #[arg(long)]
-        store_root: PathBuf,
-        #[arg(long)]
-        workspace_slug: String,
-    },
     Mine {
         #[arg(long)]
-        store_root: PathBuf,
-        #[arg(long)]
-        workspace_slug: String,
+        workspace: PathBuf,
         #[arg(long)]
         target: String,
         #[arg(long)]
@@ -122,8 +104,15 @@ fn parse_note_kind(raw: Option<String>) -> Result<Option<FeedbackNoteKind>, Stri
         .transpose()
 }
 
-fn store(store_root: PathBuf, workspace_slug: String) -> Result<EntityFeedbackStore, String> {
-    EntityFeedbackStore::new(store_root, workspace_slug)
+fn store(workspace: PathBuf) -> Result<EntityFeedbackStore, String> {
+    let selector = workspace.to_string_lossy();
+    let workspace = memory_kernel::workspace::validate_explicit_workspace_selector(Some(&selector))
+        .map_err(|err| err.to_string())?;
+    let root = memory_kernel::workspace::resolve_store_root_from(
+        std::path::Path::new(workspace),
+        ".feedback",
+    );
+    Ok(EntityFeedbackStore::new(root))
 }
 
 fn main() {
@@ -137,8 +126,7 @@ fn run() -> Result<(), String> {
     let cli = Cli::parse();
     match cli.command {
         Command::Ingest {
-            store_root,
-            workspace_slug,
+            workspace,
             source,
             target,
             rating,
@@ -147,7 +135,7 @@ fn run() -> Result<(), String> {
             session_id,
             author,
         } => {
-            let store = store(store_root, workspace_slug)?;
+            let store = store(workspace)?;
             let source = FeedbackSource::from_str(&source)?;
             let target = EntityUrn::from_str(&target)?;
             let rating = parse_rating(rating)?;
@@ -161,12 +149,8 @@ fn run() -> Result<(), String> {
             );
             Ok(())
         }
-        Command::Inbox {
-            store_root,
-            workspace_slug,
-            target,
-        } => {
-            let store = store(store_root, workspace_slug)?;
+        Command::Inbox { workspace, target } => {
+            let store = store(workspace)?;
             let target = EntityUrn::from_str(&target)?;
             let entries = store.entries_for(&target)?;
             println!(
@@ -175,12 +159,8 @@ fn run() -> Result<(), String> {
             );
             Ok(())
         }
-        Command::Summary {
-            store_root,
-            workspace_slug,
-            target,
-        } => {
-            let store = store(store_root, workspace_slug)?;
+        Command::Summary { workspace, target } => {
+            let store = store(workspace)?;
             let target = EntityUrn::from_str(&target)?;
             let summary = store.summary_for(&target)?;
             println!(
@@ -190,48 +170,22 @@ fn run() -> Result<(), String> {
             Ok(())
         }
         Command::Analytics {
-            store_root,
-            workspace_slug,
+            workspace,
             assessed_at,
             format,
         } => {
-            let store = store(store_root, workspace_slug)?;
+            let store = store(workspace)?;
             let assessed_at = parse_assessed_at(assessed_at)?;
             let report = store.analytics_at(assessed_at)?;
             print_analytics(&report, &format)
         }
-        Command::Cutover {
-            store_root,
-            workspace_slug,
-        } => {
-            let legacy_path = store_root
-                .join(&workspace_slug)
-                .join("feedback-core")
-                .join("entries.ndjson");
-            let canonical = CanonicalFeedbackStore::new(store_root);
-            let outcome = feedback_api::migration::migrate_and_discard_legacy_ndjson(
-                &canonical,
-                &workspace_slug,
-                &legacy_path,
-            )?;
-            println!(
-                "{}",
-                serde_json::to_string_pretty(&serde_json::json!({
-                    "migrated_count": outcome.migrated_count,
-                    "discarded_count": outcome.discarded_count,
-                }))
-                .map_err(|err| err.to_string())?
-            );
-            Ok(())
-        }
         Command::Mine {
-            store_root,
-            workspace_slug,
+            workspace,
             target,
             transcript,
             author,
         } => {
-            let store = store(store_root, workspace_slug.clone())?;
+            let store = store(workspace)?;
             let target = EntityUrn::from_str(&target)?;
             let author_id = author.unwrap_or_else(|| "transcript-miner".to_string());
             let _author = IngestAuthor::privileged_agent(author_id.clone())?;
