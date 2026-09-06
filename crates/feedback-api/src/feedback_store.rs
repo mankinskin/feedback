@@ -6,10 +6,18 @@ impl EntityFeedbackStore {
         Self { root: root.into() }
     }
 
+    /// Return the concrete workspace that owns this feedback store.
+    pub fn workspace_path(&self) -> PathBuf {
+        memory_kernel::workspace::resolve_workspace_root_from_store_root(
+            &self.root,
+            ".feedback",
+        )
+    }
+
     /// Persist one canonical feedback entry.
     pub fn record_entry(&self, entry: FeedbackEntry) -> Result<FeedbackEntry, String> {
         canonical::CanonicalFeedbackStore::new(self.root.clone())
-            .append_new_entry(entry.target.workspace(), entry.clone())?;
+            .append_new_entry(entry.clone())?;
         Ok(entry)
     }
 

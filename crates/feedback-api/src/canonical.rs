@@ -97,14 +97,15 @@ pub fn compute_digest(
 
 /// Resolve the canonical UUID for a legacy feedback id. A legacy id that
 /// parses as a UUID keeps that UUID; otherwise a UUIDv5 is derived from the
-/// fixed feedback namespace, the workspace slug, and the legacy id.
-pub fn canonical_entity_id(workspace_slug: &str, legacy_id: &str) -> Uuid {
+/// fixed feedback namespace, the canonical workspace path, and the legacy id.
+pub fn canonical_entity_id(workspace_path: &Path, legacy_id: &str) -> Uuid {
     match Uuid::parse_str(legacy_id) {
         Ok(uuid) => uuid,
-        Err(_) => Uuid::new_v5(
-            &FEEDBACK_LEGACY_NAMESPACE,
-            format!("{workspace_slug}:{legacy_id}").as_bytes(),
-        ),
+        Err(_) => {
+            let workspace = memory_kernel::workspace::canonicalize_workspace_root(workspace_path);
+            let name = format!("{}:{legacy_id}", workspace.to_string_lossy());
+            Uuid::new_v5(&FEEDBACK_LEGACY_NAMESPACE, name.as_bytes())
+        },
     }
 }
 
@@ -250,10 +251,13 @@ impl CanonicalFeedbackStore {
     /// it the next monotonic ordinal.
     pub fn append_new_entry(
         &self,
-        workspace_slug: &str,
         entry: FeedbackEntry,
     ) -> Result<CanonicalFeedbackEntity, String> {
-        let id = canonical_entity_id(workspace_slug, &entry.id);
+        let workspace = memory_kernel::workspace::resolve_workspace_root_from_store_root(
+            &self.store_root,
+            FEEDBACK_STORE_INDEX_DIR,
+        );
+        let id = canonical_entity_id(&workspace, &entry.id);
         let alias = (entry.id != id.to_string()).then(|| entry.id.clone());
         let ordinal = self.next_ordinal()?;
         let entity = CanonicalFeedbackEntity::new(id, alias, ordinal, entry);

@@ -87,7 +87,7 @@ fn feedback_transfer_contract_temporary_root_parity() {
     let fixture_target = workflow_tools_feedback.join("test-fixtures").join("transfer-fixture");
     copy_dir_recursive(&fixture_source, &fixture_target);
 
-    let source_store = CanonicalFeedbackStore::new(fixture_target.join(".feedback"));
+    let source_store = CanonicalFeedbackStore::open(&fixture_target);
     let entity_id = normalize_fixture_entity(&source_store);
     let source_digest = source_store
         .read_entity(&entity_id)

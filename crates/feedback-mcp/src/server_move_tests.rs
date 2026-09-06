@@ -48,7 +48,7 @@ fn seed_entity(source_workspace: &std::path::Path) -> uuid::Uuid {
         provenance,
     )
     .unwrap();
-    store.append_new_entry("demo", entry).unwrap().id
+    store.append_new_entry(entry).unwrap().id
 }
 
 #[tokio::test]
@@ -61,7 +61,10 @@ async fn move_preflight_apply_resume_rollback_routes_preserve_journal_semantics(
     let source_workspace = repo_root.join("source-workspace");
     let target_workspace = repo_root.join("target-workspace");
     std::fs::create_dir_all(&source_workspace).expect("source workspace");
-    std::fs::create_dir_all(target_workspace.join(".feedback")).expect("target feedback dir");
+    std::fs::create_dir_all(
+        target_workspace.join(".workflow-tools").join("feedback"),
+    )
+    .expect("target feedback dir");
 
     let entity_id = seed_entity(&source_workspace);
     let server = FeedbackServer::new();

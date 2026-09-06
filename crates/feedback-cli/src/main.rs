@@ -375,7 +375,10 @@ mod move_cli_tests {
         let source_workspace = repo.join("source");
         let target_workspace = repo.join("target");
         std::fs::create_dir_all(&source_workspace).unwrap();
-        std::fs::create_dir_all(target_workspace.join(".feedback")).unwrap();
+        std::fs::create_dir_all(
+            target_workspace.join(".workflow-tools").join("feedback"),
+        )
+        .unwrap();
 
         let source_store = CanonicalFeedbackStore::open(&source_workspace);
         let target = EntityUrn::ticket("demo", "t").unwrap();
@@ -389,7 +392,7 @@ mod move_cli_tests {
             provenance,
         )
         .unwrap();
-        let entity = source_store.append_new_entry("demo", entry).unwrap();
+        let entity = source_store.append_new_entry(entry).unwrap();
 
         cmd_move(MoveArgs {
             workspace_root: source_workspace.clone(),
@@ -420,7 +423,10 @@ mod move_cli_tests {
         let source_workspace = repo.join("source");
         let target_workspace = repo.join("target");
         std::fs::create_dir_all(&source_workspace).unwrap();
-        std::fs::create_dir_all(target_workspace.join(".feedback")).unwrap();
+        std::fs::create_dir_all(
+            target_workspace.join(".workflow-tools").join("feedback"),
+        )
+        .unwrap();
 
         let source_store = CanonicalFeedbackStore::open(&source_workspace);
         let target = EntityUrn::ticket("demo", "t").unwrap();
@@ -434,7 +440,7 @@ mod move_cli_tests {
             provenance,
         )
         .unwrap();
-        let entity = source_store.append_new_entry("demo", entry).unwrap();
+        let entity = source_store.append_new_entry(entry).unwrap();
 
         let plan = source_store
             .plan_move_set(&[entity.id], &target_workspace)
