@@ -501,7 +501,12 @@ impl EntityUrn {
     }
 
     pub fn as_str(&self) -> String {
-        format!("ce://{}/{}/{}", self.workspace, self.store, self.entity)
+        format!(
+            "ce://{}/{}/{}",
+            encode_urn_segment(&self.workspace),
+            self.store,
+            self.entity
+        )
     }
 
     pub fn rule(workspace: impl Into<String>, entity: impl Into<String>) -> Result<Self, String> {
@@ -543,8 +548,39 @@ impl FromStr for EntityUrn {
             ));
         }
 
-        Self::new(workspace, store, entity)
+        Self::new(decode_urn_segment(workspace)?, store, entity)
     }
+}
+
+fn encode_urn_segment(value: &str) -> String {
+    value
+        .bytes()
+        .flat_map(|byte| match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
+                vec![byte as char]
+            },
+            _ => format!("%{byte:02X}").chars().collect(),
+        })
+        .collect()
+}
+
+fn decode_urn_segment(value: &str) -> Result<String, String> {
+    let mut bytes = Vec::with_capacity(value.len());
+    let mut chars = value.bytes();
+    while let Some(byte) = chars.next() {
+        if byte != b'%' {
+            bytes.push(byte);
+            continue;
+        }
+        let high = chars.next().ok_or_else(|| format!("invalid percent encoding in '{value}'"))?;
+        let low = chars.next().ok_or_else(|| format!("invalid percent encoding in '{value}'"))?;
+        let hex = [high, low];
+        let hex = std::str::from_utf8(&hex).map_err(|_| format!("invalid percent encoding in '{value}'"))?;
+        let decoded = u8::from_str_radix(hex, 16)
+            .map_err(|_| format!("invalid percent encoding in '{value}'"))?;
+        bytes.push(decoded);
+    }
+    String::from_utf8(bytes).map_err(|_| format!("invalid UTF-8 workspace path in '{value}'"))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
