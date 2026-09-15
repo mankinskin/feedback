@@ -9,6 +9,7 @@ mod feedback_store;
 mod frontend;
 
 pub mod canonical;
+pub mod domain_adoption;
 pub mod move_domain;
 
 pub use frontend::{FrontendFeedbackSubmission, ingest_frontend_feedback};
