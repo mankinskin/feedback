@@ -31,6 +31,36 @@ impl EntityFeedbackStore {
             .collect())
     }
 
+    /// List canonical feedback entries whose provenance carries `session_id`,
+    /// ordered by creation ordinal.
+    pub fn entries_for_session(&self, session_id: &str) -> Result<Vec<FeedbackEntry>, String> {
+        Ok(canonical::CanonicalFeedbackStore::new(self.root.clone())
+            .list_entities()?
+            .into_iter()
+            .map(|entity| entity.entry)
+            .filter(|entry| entry.provenance.session_id.as_deref() == Some(session_id))
+            .collect())
+    }
+
+    /// Summarize canonical feedback entries recorded for one session.
+    pub fn session_summary(&self, session_id: &str) -> Result<SessionFeedbackSummary, String> {
+        let mut summary = SessionFeedbackSummary::new(session_id.to_string());
+        for entry in self.entries_for_session(session_id)? {
+            summary.total_count += 1;
+            match entry.rating {
+                Some(FeedbackRating::Helpful) => summary.helpful_count += 1,
+                Some(FeedbackRating::Mixed) => summary.mixed_count += 1,
+                Some(FeedbackRating::NotHelpful) => summary.not_helpful_count += 1,
+                None => {}
+            }
+            if entry.note_text.is_some() {
+                summary.note_count += 1;
+            }
+            summary.entries.push(entry);
+        }
+        Ok(summary)
+    }
+
     /// Produce a read-only report from canonical feedback entries.
     pub fn analytics_at(
         &self,

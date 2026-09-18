@@ -767,6 +767,35 @@ impl EntityFeedbackSummary {
     }
 }
 
+/// Session-scoped feedback rollup: every entry whose provenance carries the
+/// given `session_id`, plus a compact rating/note count. Turn-level
+/// granularity is intentionally out of scope (see `ARTIFACTS.md`/`ROADMAP.md`
+/// in `transcripts/19-09-2026_feedback-turn-summary-workflow/`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SessionFeedbackSummary {
+    pub session_id: String,
+    pub total_count: i64,
+    pub helpful_count: i64,
+    pub mixed_count: i64,
+    pub not_helpful_count: i64,
+    pub note_count: i64,
+    pub entries: Vec<FeedbackEntry>,
+}
+
+impl SessionFeedbackSummary {
+    fn new(session_id: String) -> Self {
+        Self {
+            session_id,
+            total_count: 0,
+            helpful_count: 0,
+            mixed_count: 0,
+            not_helpful_count: 0,
+            note_count: 0,
+            entries: Vec::new(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EntityFeedbackStore {
     root: PathBuf,

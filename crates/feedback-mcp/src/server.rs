@@ -41,6 +41,14 @@ pub struct QueryInput {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+pub struct SessionQueryInput {
+    /// Concrete workspace path, repo root, .feedback store path, or path inside that store.
+    pub workspace: String,
+    /// Session UUID whose feedback entries should be summarized.
+    pub session_id: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
 pub struct AnalyticsInput {
     /// Concrete workspace path, repo root, .feedback store path, or path inside that store.
     pub workspace: String,
@@ -195,6 +203,21 @@ impl FeedbackServer {
             .map_err(|err| McpError::invalid_params(err, None))?;
         let summary = store
             .summary_for(&target)
+            .map_err(|err| McpError::internal_error(err, None))?;
+        Self::json_result(&summary)
+    }
+
+    #[tool(
+        name = "feedback_session_summary",
+        description = "List feedback entries and a compact rollup for one session_id, so an agent can surface end-of-turn feedback visibility without a target entity URN."
+    )]
+    pub async fn feedback_session_summary(
+        &self,
+        Parameters(input): Parameters<SessionQueryInput>,
+    ) -> Result<CallToolResult, McpError> {
+        let store = self.store_for(&input.workspace)?;
+        let summary = store
+            .session_summary(&input.session_id)
             .map_err(|err| McpError::internal_error(err, None))?;
         Self::json_result(&summary)
     }
@@ -437,6 +460,54 @@ mod tests {
     fn workspace_validation_accepts_current_directory() {
         memory_kernel::workspace::validate_explicit_workspace_selector(Some("."))
             .expect("'.' should resolve to the MCP server's cwd");
+    }
+
+    #[tokio::test]
+    async fn session_summary_tool_filters_by_session_id() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = EntityFeedbackStore::new(directory.path().join(".feedback"));
+        let entry = FeedbackEntry::new(
+            FeedbackSource::Agent,
+            EntityUrn::rule("default", "rule-a").unwrap(),
+            Some(FeedbackRating::Mixed),
+            Some("unexpected tool behavior".to_string()),
+            None,
+            FeedbackProvenance::new(
+                Some("session-a".to_string()),
+                Some("copilot".to_string()),
+                None,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        store.record_entry(entry).unwrap();
+        let server = FeedbackServer::new();
+
+        let summary = result_json(
+            server
+                .feedback_session_summary(Parameters(SessionQueryInput {
+                    workspace: directory.path().to_string_lossy().to_string(),
+                    session_id: "session-a".to_string(),
+                }))
+                .await
+                .unwrap(),
+        );
+
+        assert_eq!(summary["session_id"], "session-a");
+        assert_eq!(summary["total_count"], 1);
+        assert_eq!(summary["mixed_count"], 1);
+        assert_eq!(summary["note_count"], 1);
+
+        let empty = result_json(
+            server
+                .feedback_session_summary(Parameters(SessionQueryInput {
+                    workspace: directory.path().to_string_lossy().to_string(),
+                    session_id: "session-b".to_string(),
+                }))
+                .await
+                .unwrap(),
+        );
+        assert_eq!(empty["total_count"], 0);
     }
 
     #[tokio::test]
