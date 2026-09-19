@@ -42,10 +42,22 @@ impl EntityFeedbackStore {
             .collect())
     }
 
-    /// Summarize canonical feedback entries recorded for one session.
-    pub fn session_summary(&self, session_id: &str) -> Result<SessionFeedbackSummary, String> {
+    /// Summarize canonical feedback entries recorded for one session,
+    /// optionally narrowed to entries carrying `turn_sequence`.
+    pub fn session_summary(
+        &self,
+        session_id: &str,
+        turn_sequence: Option<usize>,
+    ) -> Result<SessionFeedbackSummary, String> {
         let mut summary = SessionFeedbackSummary::new(session_id.to_string());
-        for entry in self.entries_for_session(session_id)? {
+        for entry in self
+            .entries_for_session(session_id)?
+            .into_iter()
+            .filter(|entry| match turn_sequence {
+                Some(turn) => entry.provenance.turn_sequence == Some(turn),
+                None => true,
+            })
+        {
             summary.total_count += 1;
             match entry.rating {
                 Some(FeedbackRating::Helpful) => summary.helpful_count += 1,

@@ -31,6 +31,11 @@ pub struct IngestInput {
     pub session_id: Option<String>,
     #[serde(default)]
     pub author: Option<String>,
+    /// Best-effort current turn number, self-reported by the calling agent
+    /// (e.g. derived from `session_peek_skeleton`'s `total_turns`). Not an
+    /// authoritative capture-time stamp.
+    #[serde(default)]
+    pub turn_sequence: Option<usize>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -46,6 +51,10 @@ pub struct SessionQueryInput {
     pub workspace: String,
     /// Session UUID whose feedback entries should be summarized.
     pub session_id: String,
+    /// Optional best-effort turn number to further narrow the summary to
+    /// one turn within the session.
+    #[serde(default)]
+    pub turn_sequence: Option<usize>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -152,8 +161,14 @@ impl FeedbackServer {
             .map(|value| FeedbackNoteKind::from_str(&value))
             .transpose()
             .map_err(|err| McpError::invalid_params(err, None))?;
-        let provenance = FeedbackProvenance::new(input.session_id, input.author, None)
-            .map_err(|err| McpError::invalid_params(err, None))?;
+        let provenance = FeedbackProvenance::from_session_turn(
+            input.session_id,
+            input.author,
+            None,
+            input.turn_sequence,
+            None,
+        )
+        .map_err(|err| McpError::invalid_params(err, None))?;
         let entry = FeedbackEntry::new(source, target, rating, input.note, note_kind, provenance)
             .map_err(|err| McpError::invalid_params(err, None))?;
         let persisted = store
@@ -209,7 +224,7 @@ impl FeedbackServer {
 
     #[tool(
         name = "feedback_session_summary",
-        description = "List feedback entries and a compact rollup for one session_id, so an agent can surface end-of-turn feedback visibility without a target entity URN."
+        description = "List feedback entries and a compact rollup for one session_id, optionally narrowed to a best-effort turn_sequence, so an agent can surface end-of-turn feedback visibility without a target entity URN."
     )]
     pub async fn feedback_session_summary(
         &self,
@@ -217,7 +232,7 @@ impl FeedbackServer {
     ) -> Result<CallToolResult, McpError> {
         let store = self.store_for(&input.workspace)?;
         let summary = store
-            .session_summary(&input.session_id)
+            .session_summary(&input.session_id, input.turn_sequence)
             .map_err(|err| McpError::internal_error(err, None))?;
         Self::json_result(&summary)
     }
@@ -488,6 +503,7 @@ mod tests {
                 .feedback_session_summary(Parameters(SessionQueryInput {
                     workspace: directory.path().to_string_lossy().to_string(),
                     session_id: "session-a".to_string(),
+                    turn_sequence: None,
                 }))
                 .await
                 .unwrap(),
@@ -503,11 +519,103 @@ mod tests {
                 .feedback_session_summary(Parameters(SessionQueryInput {
                     workspace: directory.path().to_string_lossy().to_string(),
                     session_id: "session-b".to_string(),
+                    turn_sequence: None,
                 }))
                 .await
                 .unwrap(),
         );
         assert_eq!(empty["total_count"], 0);
+    }
+
+    #[tokio::test]
+    async fn session_summary_tool_narrows_to_turn_sequence() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = EntityFeedbackStore::new(directory.path().join(".feedback"));
+        let turn_one_entry = FeedbackEntry::new(
+            FeedbackSource::Agent,
+            EntityUrn::rule("default", "rule-a").unwrap(),
+            Some(FeedbackRating::Mixed),
+            Some("turn one finding".to_string()),
+            None,
+            FeedbackProvenance::from_session_turn(
+                Some("session-a".to_string()),
+                Some("copilot".to_string()),
+                None,
+                Some(1),
+                None,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        let turn_two_entry = FeedbackEntry::new(
+            FeedbackSource::Agent,
+            EntityUrn::rule("default", "rule-b").unwrap(),
+            Some(FeedbackRating::Helpful),
+            None,
+            None,
+            FeedbackProvenance::from_session_turn(
+                Some("session-a".to_string()),
+                Some("copilot".to_string()),
+                None,
+                Some(2),
+                None,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        store.record_entry(turn_one_entry).unwrap();
+        store.record_entry(turn_two_entry).unwrap();
+        let server = FeedbackServer::new();
+
+        let turn_one_summary = result_json(
+            server
+                .feedback_session_summary(Parameters(SessionQueryInput {
+                    workspace: directory.path().to_string_lossy().to_string(),
+                    session_id: "session-a".to_string(),
+                    turn_sequence: Some(1),
+                }))
+                .await
+                .unwrap(),
+        );
+        assert_eq!(turn_one_summary["total_count"], 1);
+        assert_eq!(turn_one_summary["mixed_count"], 1);
+
+        let whole_session_summary = result_json(
+            server
+                .feedback_session_summary(Parameters(SessionQueryInput {
+                    workspace: directory.path().to_string_lossy().to_string(),
+                    session_id: "session-a".to_string(),
+                    turn_sequence: None,
+                }))
+                .await
+                .unwrap(),
+        );
+        assert_eq!(whole_session_summary["total_count"], 2);
+    }
+
+    #[tokio::test]
+    async fn ingest_tool_stamps_agent_supplied_turn_sequence() {
+        let directory = tempfile::tempdir().unwrap();
+        let server = FeedbackServer::new();
+
+        let persisted = result_json(
+            server
+                .feedback_ingest(Parameters(IngestInput {
+                    workspace: directory.path().to_string_lossy().to_string(),
+                    source: "agent".to_string(),
+                    target: "ce://default/rule/rule-a".to_string(),
+                    rating: Some("mixed".to_string()),
+                    note: Some("unexpected tool behavior".to_string()),
+                    note_kind: None,
+                    session_id: Some("session-a".to_string()),
+                    author: Some("copilot".to_string()),
+                    turn_sequence: Some(3),
+                }))
+                .await
+                .unwrap(),
+        );
+
+        assert_eq!(persisted["provenance"]["turn_sequence"], 3);
     }
 
     #[tokio::test]
