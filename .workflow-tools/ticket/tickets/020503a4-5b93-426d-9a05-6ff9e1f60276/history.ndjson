@@ -1,0 +1,3 @@
+{"rev":1,"ts":"2026-08-05T13:50:49.857462700+00:00","fields":{"component":"feedback-api","priority":"high","state":"open","title":"Test shared feedback API contract","type":"task"}}
+{"rev":2,"ts":"2026-08-05T14:13:20.066827100+00:00","fields":{"component":"feedback-api","depends_on":["274c3fcf-1502-41b3-af5b-cd1e7e599e79"],"priority":"high","state":"open","title":"Test shared feedback API contract","type":"task"}}
+{"rev":3,"ts":"2026-08-05T14:18:40.092975+00:00","fields":{"component":"feedback-api","depends_on":["274c3fcf-1502-41b3-af5b-cd1e7e599e79"],"effort":"4000","priority":"high","state":"open","title":"Test shared feedback API contract","type":"task"}}

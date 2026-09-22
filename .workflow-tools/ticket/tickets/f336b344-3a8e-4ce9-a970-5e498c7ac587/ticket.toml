@@ -1,0 +1,9 @@
+id = "f336b344-3a8e-4ce9-a970-5e498c7ac587"
+created_at = "2026-09-05T17:05:50.322743500+00:00"
+title = "Expose feedback analytics through CLI and MCP"
+state = "planning"
+component = "feedback"
+depends_on = ["9f3cb6b3-1c65-4103-b60f-7f25933726fe"]
+effort = "5k tokens"
+spec_ids = "ad37a3f2-a5df-4427-bc90-7721de08e0e2"
+type = "feature"

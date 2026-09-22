@@ -1,0 +1,1 @@
+After current-schema analytics has been validated against historic feedback, evolve the schema and migrate valid legacy records. Report only the count of discarded malformed or unmigratable lines, then permanently remove obsolete source history without retaining a backup. Add migration and post-cutover analytics parity tests.

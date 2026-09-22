@@ -1,0 +1,9 @@
+id = "14cafba1-ebb0-4df6-8255-e2ae0d58658e"
+created_at = "2026-09-05T17:05:56.151610700+00:00"
+title = "Migrate feedback history to analytics schema"
+state = "planning"
+component = "feedback"
+depends_on = ["9f3cb6b3-1c65-4103-b60f-7f25933726fe", "f336b344-3a8e-4ce9-a970-5e498c7ac587"]
+effort = "12k tokens"
+spec_ids = "4114d8c1-0abc-4464-ae51-35b026690f0a"
+type = "feature"

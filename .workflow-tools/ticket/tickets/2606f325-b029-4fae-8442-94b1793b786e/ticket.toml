@@ -1,0 +1,7 @@
+id = "2606f325-b029-4fae-8442-94b1793b786e"
+created_at = "2026-08-13T09:34:22.561700200+00:00"
+title = "Sync-copilot-surfaces should try symlinks with read-only-copy fallback"
+state = "in-review"
+parts = [{ id = "ee60dac8-3c94-430f-8eff-ce6ce977a08f", kind = "review", path = "parts/ee60dac8-3c94-430f-8eff-ce6ce977a08f.md", frozen = false, created_at = "2026-08-13T09:37:41.117345100Z" }, { id = "39e2469a-7584-4c1b-80a2-57a7e678e27e", kind = "review", path = "parts/39e2469a-7584-4c1b-80a2-57a7e678e27e.md", frozen = false, created_at = "2026-08-13T09:50:17.495553300Z" }]
+type = "bug"
+component = "feedback"

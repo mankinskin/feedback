@@ -1,0 +1,2 @@
+{"rev":1,"ts":"2026-09-05T17:05:44.823184+00:00","fields":{"component":"feedback-api","spec_ids":"ed877ff1-37e4-41fe-aa79-87c6daa58be9","state":"open","title":"Implement feedback analytics core","type":"feature"}}
+{"rev":2,"ts":"2026-09-05T17:07:04.325126800+00:00","fields":{"component":"feedback-api","effort":"8k tokens","spec_ids":"ed877ff1-37e4-41fe-aa79-87c6daa58be9","state":"open","title":"Implement feedback analytics core","type":"feature"},"author":"GitHub Copilot"}

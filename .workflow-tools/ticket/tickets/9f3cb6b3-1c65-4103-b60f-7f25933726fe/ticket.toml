@@ -1,0 +1,8 @@
+id = "9f3cb6b3-1c65-4103-b60f-7f25933726fe"
+created_at = "2026-09-05T17:05:44.679376900+00:00"
+title = "Implement feedback analytics core"
+state = "planning"
+component = "feedback"
+effort = "8k tokens"
+spec_ids = "ed877ff1-37e4-41fe-aa79-87c6daa58be9"
+type = "feature"

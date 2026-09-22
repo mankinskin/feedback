@@ -1,0 +1,1 @@
+Implement read-only statistical queries over existing feedback records: raw events, derived incidents, data-quality totals, distributions, trends, and lifecycle signals. Tentative resolution requires 10 quiet days with at least 100 valid events. Add fixture and integration coverage.

@@ -1,0 +1,1 @@
+Build the first feedback-domain Entity Kernel adapter. Preserve feedback business schemas and current store behavior. Add explicit domain manifest, migration adapter, event hooks, workspace capability integration, and compatibility fixtures using the finalized kernel protocol.
