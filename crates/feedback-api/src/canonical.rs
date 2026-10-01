@@ -22,7 +22,11 @@ use crate::FeedbackEntry;
 pub const FEEDBACK_ENTITY_SUBDIR: &str = "entries";
 /// File name of the canonical entity payload inside its entity folder.
 pub const FEEDBACK_ENTITY_FILE_NAME: &str = "entity.json";
-/// Store-marker directory name used for workspace<->store-root resolution.
+/// Logical store name used for workspace<->store-root resolution.
+///
+/// The shared resolver maps this legacy-compatible name to the canonical
+/// `.workflow-tools/feedback` path and still recognizes a legacy `.feedback`
+/// directory during migration.
 pub const FEEDBACK_STORE_INDEX_DIR: &str = ".feedback";
 
 /// Fixed namespace used to derive a canonical UUID from a non-UUID legacy
@@ -114,6 +118,94 @@ pub fn canonical_entity_id(workspace_path: &Path, legacy_id: &str) -> Uuid {
 #[derive(Debug, Clone)]
 pub struct CanonicalFeedbackStore {
     store_root: PathBuf,
+}
+
+/// Resolve feedback storage at the canonical path, migrating an existing
+/// legacy `.feedback` store on first access.
+pub fn resolve_feedback_store_root(workspace_root: &Path) -> Result<PathBuf, String> {
+    let resolved = memory_kernel::workspace::resolve_store_root_from(
+        workspace_root,
+        FEEDBACK_STORE_INDEX_DIR,
+    );
+    let canonical_workspace =
+        memory_kernel::workspace::resolve_workspace_root_from_store_root(
+            &resolved,
+            FEEDBACK_STORE_INDEX_DIR,
+        );
+    let canonical = memory_kernel::workspace::canonical_store_root(
+        &canonical_workspace,
+        FEEDBACK_STORE_INDEX_DIR,
+    );
+
+    if resolved != canonical {
+        migrate_legacy_feedback_store(&resolved, &canonical)?;
+    }
+    Ok(canonical)
+}
+
+fn migrate_legacy_feedback_store(legacy: &Path, canonical: &Path) -> Result<(), String> {
+    if !legacy.is_dir() || legacy == canonical {
+        return Ok(());
+    }
+
+    fs::create_dir_all(canonical).map_err(|err| {
+        format!(
+            "failed to create canonical feedback store {}: {err}",
+            canonical.display()
+        )
+    })?;
+
+    let legacy_entries = legacy.join(FEEDBACK_ENTITY_SUBDIR);
+    if legacy_entries.is_dir() {
+        let canonical_entries = canonical.join(FEEDBACK_ENTITY_SUBDIR);
+        fs::create_dir_all(&canonical_entries).map_err(|err| {
+            format!(
+                "failed to create canonical feedback entries directory {}: {err}",
+                canonical_entries.display()
+            )
+        })?;
+        for entry in fs::read_dir(&legacy_entries).map_err(|err| {
+            format!(
+                "failed to list legacy feedback entries {}: {err}",
+                legacy_entries.display()
+            )
+        })? {
+            let entry = entry.map_err(|err| err.to_string())?;
+            let source = entry.path();
+            let destination = canonical_entries.join(entry.file_name());
+            if destination.exists() {
+                let source_bytes = fs::read(&source).map_err(|err| {
+                    format!("failed to read legacy feedback entry {}: {err}", source.display())
+                })?;
+                let destination_bytes = fs::read(&destination).map_err(|err| {
+                    format!(
+                        "failed to read canonical feedback entry {}: {err}",
+                        destination.display()
+                    )
+                })?;
+                if source_bytes != destination_bytes {
+                    return Err(format!(
+                        "legacy feedback entry conflicts with canonical entry: {}",
+                        destination.display()
+                    ));
+                }
+                fs::remove_dir_all(&source).map_err(|err| {
+                    format!("failed to remove migrated feedback entry {}: {err}", source.display())
+                })?;
+            } else {
+                fs::rename(&source, &destination).map_err(|err| {
+                    format!(
+                        "failed to migrate feedback entry {} to {}: {err}",
+                        source.display(),
+                        destination.display()
+                    )
+                })?;
+            }
+        }
+        fs::remove_dir(&legacy_entries).ok();
+    }
+    fs::remove_dir(legacy).ok();
+    Ok(())
 }
 
 impl CanonicalFeedbackStore {

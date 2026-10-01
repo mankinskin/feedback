@@ -100,11 +100,8 @@ impl FeedbackServer {
         let workspace =
             memory_kernel::workspace::validate_explicit_workspace_selector(Some(workspace))
                 .map_err(|err| McpError::invalid_params(err.to_string(), None))?;
-        let root = memory_kernel::workspace::resolve_store_root_from(
-            std::path::Path::new(workspace),
-            ".feedback",
-        );
-        Ok(EntityFeedbackStore::new(root))
+        EntityFeedbackStore::open(std::path::Path::new(workspace))
+            .map_err(|err| McpError::internal_error(err, None))
     }
 
     fn json_result<T: Serialize>(value: &T) -> Result<CallToolResult, McpError> {

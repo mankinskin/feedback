@@ -19,6 +19,7 @@ use std::{
 use feedback_api::canonical::{
     CanonicalFeedbackEntity,
     CanonicalFeedbackStore,
+    resolve_feedback_store_root,
 };
 use memory_kernel::ContentKind;
 use uuid::Uuid;
@@ -172,6 +173,33 @@ fn feedback_transfer_contract_temporary_root_parity() {
         canonical_container_store.read_entity(&entity_id).unwrap().is_none(),
         "destination entity removed after rollback"
     );
+}
+
+#[test]
+fn legacy_feedback_store_migrates_to_canonical_root() {
+    let temp = tempfile::tempdir().unwrap();
+    let workspace = temp.path().join("workspace");
+    let legacy = workspace.join(".feedback");
+    fs::create_dir_all(&workspace).unwrap();
+    copy_dir_recursive(
+        &Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .and_then(Path::parent)
+            .unwrap()
+            .join("test-fixtures")
+            .join("transfer-fixture")
+            .join(".feedback"),
+        &legacy,
+    );
+
+    let legacy_store = CanonicalFeedbackStore::new(&legacy);
+    let entity_id = normalize_fixture_entity(&legacy_store);
+    let canonical = resolve_feedback_store_root(&workspace).unwrap();
+    let canonical_store = CanonicalFeedbackStore::new(&canonical);
+
+    assert_eq!(canonical, workspace.join(".workflow-tools").join("feedback"));
+    assert!(canonical_store.read_entity(&entity_id).unwrap().is_some());
+    assert!(!legacy.exists());
 }
 
 fn discovery_tuples(

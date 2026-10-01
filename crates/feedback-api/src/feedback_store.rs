@@ -6,6 +6,10 @@ impl EntityFeedbackStore {
         Self { root: root.into() }
     }
 
+    pub fn open(workspace_root: &std::path::Path) -> Result<Self, String> {
+        Ok(Self::new(canonical::resolve_feedback_store_root(workspace_root)?))
+    }
+
     /// Return the concrete workspace that owns this feedback store.
     pub fn workspace_path(&self) -> PathBuf {
         memory_kernel::workspace::resolve_workspace_root_from_store_root(

@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use feedback_mcp::run_mcp_server;
 
 #[tokio::main]

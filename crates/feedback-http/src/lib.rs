@@ -66,10 +66,7 @@ fn store_for(
                 Some(workspace),
             )
             .map_err(|err| err.to_string())?;
-        memory_kernel::workspace::resolve_store_root_from(
-            std::path::Path::new(workspace),
-            ".feedback",
-        )
+        feedback_api::canonical::resolve_feedback_store_root(std::path::Path::new(workspace))?
     } else {
         state.store_root.clone()
     };

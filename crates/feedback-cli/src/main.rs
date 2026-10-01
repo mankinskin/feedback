@@ -108,11 +108,7 @@ fn store(workspace: PathBuf) -> Result<EntityFeedbackStore, String> {
     let selector = workspace.to_string_lossy();
     let workspace = memory_kernel::workspace::validate_explicit_workspace_selector(Some(&selector))
         .map_err(|err| err.to_string())?;
-    let root = memory_kernel::workspace::resolve_store_root_from(
-        std::path::Path::new(workspace),
-        ".feedback",
-    );
-    Ok(EntityFeedbackStore::new(root))
+    EntityFeedbackStore::open(std::path::Path::new(workspace))
 }
 
 fn main() {
