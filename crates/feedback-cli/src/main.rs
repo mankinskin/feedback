@@ -106,9 +106,9 @@ fn parse_note_kind(raw: Option<String>) -> Result<Option<FeedbackNoteKind>, Stri
 
 fn store(workspace: PathBuf) -> Result<EntityFeedbackStore, String> {
     let selector = workspace.to_string_lossy();
-    let workspace = memory_kernel::workspace::validate_explicit_workspace_selector(Some(&selector))
+    let workspace = memory_kernel::workspace::normalize_explicit_workspace_selector(Some(&selector))
         .map_err(|err| err.to_string())?;
-    EntityFeedbackStore::open(std::path::Path::new(workspace))
+    EntityFeedbackStore::open(&workspace)
 }
 
 fn main() {
@@ -268,9 +268,8 @@ fn cmd_move(args: MoveArgs) -> Result<(), String> {
         return Err("move accepts only one of --resume or --rollback".to_string());
     }
 
-    let store = CanonicalFeedbackStore::open(&args.workspace_root);
-
     if let Some(journal_id) = args.resume.as_deref() {
+        let store = CanonicalFeedbackStore::open(&args.workspace_root);
         let journal_id = journal_id
             .parse::<Uuid>()
             .map_err(|err| format!("invalid --resume journal UUID: {err}"))?;
@@ -286,6 +285,7 @@ fn cmd_move(args: MoveArgs) -> Result<(), String> {
     }
 
     if let Some(journal_id) = args.rollback.as_deref() {
+        let store = CanonicalFeedbackStore::open(&args.workspace_root);
         let journal_id = journal_id
             .parse::<Uuid>()
             .map_err(|err| format!("invalid --rollback journal UUID: {err}"))?;
@@ -306,6 +306,11 @@ fn cmd_move(args: MoveArgs) -> Result<(), String> {
     let to_workspace_root = args
         .to_workspace_root
         .ok_or_else(|| "move requires --to-workspace-root in plan/execute mode".to_string())?;
+    let selector = to_workspace_root.to_string_lossy();
+    let to_workspace_root = memory_kernel::workspace::normalize_explicit_workspace_selector(
+        Some(&selector),
+    )
+    .map_err(|err| err.to_string())?;
     let ids = args
         .ids
         .iter()
@@ -315,6 +320,7 @@ fn cmd_move(args: MoveArgs) -> Result<(), String> {
         })
         .collect::<Result<Vec<_>, _>>()?;
 
+    let store = CanonicalFeedbackStore::open(&args.workspace_root);
     let plan = store.plan_move_set(&ids, &to_workspace_root)?;
 
     if args.dry_run || !plan.supported() {
@@ -352,6 +358,14 @@ fn print_json(value: &serde_json::Value) -> Result<(), String> {
 #[cfg(test)]
 mod move_cli_tests {
     use super::*;
+
+    #[test]
+    fn store_rejects_ambient_workspace_aliases() {
+        for selector in ["", "  ", "default", ".."] {
+            let error = store(PathBuf::from(selector)).unwrap_err();
+            assert!(error.contains("requires an explicit workspace path"));
+        }
+    }
 
     fn init_git(root: &std::path::Path) {
         std::fs::create_dir_all(root).unwrap();
@@ -409,6 +423,25 @@ mod move_cli_tests {
             target_store.read_entity(&entity.id).unwrap().is_none(),
             "dry run must not create a destination entity"
         );
+    }
+
+    #[test]
+    fn move_rejects_ambient_target_aliases_before_source_access() {
+        let temp = tempfile::tempdir().unwrap();
+        let missing_workspace = temp.path().join("not-created-workspace");
+
+        for selector in ["", "  ", "default", ".."] {
+            let result = cmd_move(MoveArgs {
+                workspace_root: missing_workspace.clone(),
+                ids: vec!["7b3a7c62-1f3f-45d6-b8a1-f2b83e3d9f71".to_string()],
+                to_workspace_root: Some(PathBuf::from(selector)),
+                dry_run: true,
+                resume: None,
+                rollback: None,
+            });
+            assert!(result.is_err(), "selector {selector:?} must be rejected");
+            assert!(!missing_workspace.exists());
+        }
     }
 
     #[test]

@@ -98,9 +98,9 @@ impl FeedbackServer {
 
     fn store_for(&self, workspace: &str) -> Result<EntityFeedbackStore, McpError> {
         let workspace =
-            memory_kernel::workspace::validate_explicit_workspace_selector(Some(workspace))
+            memory_kernel::workspace::normalize_explicit_workspace_selector(Some(workspace))
                 .map_err(|err| McpError::invalid_params(err.to_string(), None))?;
-        EntityFeedbackStore::open(std::path::Path::new(workspace))
+        EntityFeedbackStore::open(&workspace)
             .map_err(|err| McpError::internal_error(err, None))
     }
 
@@ -112,11 +112,9 @@ impl FeedbackServer {
 
     fn canonical_store_for(&self, workspace: &str) -> Result<CanonicalFeedbackStore, McpError> {
         let workspace =
-            memory_kernel::workspace::validate_explicit_workspace_selector(Some(workspace))
+            memory_kernel::workspace::normalize_explicit_workspace_selector(Some(workspace))
                 .map_err(|err| McpError::invalid_params(err.to_string(), None))?;
-        Ok(CanonicalFeedbackStore::open(std::path::Path::new(
-            workspace,
-        )))
+        Ok(CanonicalFeedbackStore::open(&workspace))
     }
 
     fn parse_ids(ids: &[String]) -> Result<Vec<uuid::Uuid>, McpError> {
@@ -298,9 +296,13 @@ impl FeedbackServer {
         &self,
         Parameters(input): Parameters<FeedbackMoveInput>,
     ) -> Result<CallToolResult, McpError> {
+        let target_workspace_root =
+            memory_kernel::workspace::normalize_explicit_workspace_selector(
+                Some(&input.to_workspace_root),
+            )
+            .map_err(|err| McpError::invalid_params(err.to_string(), None))?;
         let store = self.canonical_store_for(&input.workspace)?;
         let ids = Self::parse_ids(&input.ids)?;
-        let target_workspace_root = std::path::PathBuf::from(&input.to_workspace_root);
         let plan = store
             .plan_move_set(&ids, &target_workspace_root)
             .map_err(|err| McpError::internal_error(err, None))?;
@@ -322,9 +324,13 @@ impl FeedbackServer {
         &self,
         Parameters(input): Parameters<FeedbackMoveInput>,
     ) -> Result<CallToolResult, McpError> {
+        let target_workspace_root =
+            memory_kernel::workspace::normalize_explicit_workspace_selector(
+                Some(&input.to_workspace_root),
+            )
+            .map_err(|err| McpError::invalid_params(err.to_string(), None))?;
         let store = self.canonical_store_for(&input.workspace)?;
         let ids = Self::parse_ids(&input.ids)?;
-        let target_workspace_root = std::path::PathBuf::from(&input.to_workspace_root);
         let plan = store
             .plan_move_set(&ids, &target_workspace_root)
             .map_err(|err| McpError::internal_error(err, None))?;
@@ -453,8 +459,9 @@ mod tests {
 
     #[test]
     fn workspace_validation_rejects_ambient_aliases() {
-        for value in [None, Some(""), Some("default"), Some("..")] {
-            let err = memory_kernel::workspace::validate_explicit_workspace_selector(value)
+        let server = FeedbackServer::new();
+        for value in ["", "  ", "default", ".."] {
+            let err = server.store_for(value)
                 .expect_err("should reject ambient selector");
             let err_msg = err.to_string();
             assert!(
@@ -472,6 +479,61 @@ mod tests {
     fn workspace_validation_accepts_current_directory() {
         memory_kernel::workspace::validate_explicit_workspace_selector(Some("."))
             .expect("'.' should resolve to the MCP server's cwd");
+    }
+
+    #[tokio::test]
+    async fn explicit_dot_workspace_ingest_reads_back_from_selected_store() {
+        const CHILD_ENV: &str = "FEEDBACK_MCP_DOT_SELECTOR_CHILD";
+        const TARGET: &str = "ce://default/ticket/dot-selector";
+        if std::env::var_os(CHILD_ENV).is_none() {
+            let temp = tempfile::tempdir().unwrap();
+            let parent = temp.path().join("parent");
+            let selected = parent.join("selected");
+            let sibling = parent.join("sibling");
+            std::fs::create_dir_all(&selected).unwrap();
+            std::fs::create_dir_all(&sibling).unwrap();
+
+            let output = std::process::Command::new(std::env::current_exe().unwrap())
+                .arg("explicit_dot_workspace_ingest_reads_back_from_selected_store")
+                .arg("--nocapture")
+                .env(CHILD_ENV, "1")
+                .current_dir(&selected)
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "child regression failed: {} {}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+
+            let store = EntityFeedbackStore::open(&selected).unwrap();
+            let target = EntityUrn::from_str(TARGET).unwrap();
+            let entries = store.entries_for(&target).unwrap();
+            assert_eq!(entries.len(), 1);
+            assert_eq!(entries[0].note_text.as_deref(), Some("dot selector"));
+            assert!(selected.join(".workflow-tools/feedback/entries").is_dir());
+            assert!(!parent.join(".workflow-tools/feedback").exists());
+            assert!(!sibling.join(".workflow-tools/feedback").exists());
+            return;
+        }
+
+        let server = FeedbackServer::new();
+        let result = server
+            .feedback_ingest(Parameters(IngestInput {
+                workspace: ".".to_string(),
+                source: "agent".to_string(),
+                target: TARGET.to_string(),
+                rating: Some("helpful".to_string()),
+                note: Some("dot selector".to_string()),
+                note_kind: Some("note".to_string()),
+                session_id: None,
+                author: Some("test".to_string()),
+                turn_sequence: None,
+            }))
+            .await
+            .expect("ingest in selected workspace");
+        assert!(!result.is_error.unwrap_or(false));
     }
 
     #[tokio::test]

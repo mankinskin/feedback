@@ -127,3 +127,27 @@ async fn move_preflight_apply_resume_rollback_routes_preserve_journal_semantics(
         "rollback must remove the destination entity"
     );
 }
+
+#[tokio::test]
+async fn move_targets_reject_ambient_aliases_before_source_access() {
+    let tmp = TempDir::new().expect("tempdir");
+    let missing_source = tmp.path().join("not-created-source");
+    let server = FeedbackServer::new();
+
+    for selector in ["", "  ", "default", ".."] {
+        let input = FeedbackMoveInput {
+            workspace: missing_source.to_string_lossy().to_string(),
+            ids: vec!["7b3a7c62-1f3f-45d6-b8a1-f2b83e3d9f71".to_string()],
+            to_workspace_root: selector.to_string(),
+        };
+        assert!(server.feedback_move_preflight(Parameters(input)).await.is_err());
+
+        let input = FeedbackMoveInput {
+            workspace: missing_source.to_string_lossy().to_string(),
+            ids: vec!["7b3a7c62-1f3f-45d6-b8a1-f2b83e3d9f71".to_string()],
+            to_workspace_root: selector.to_string(),
+        };
+        assert!(server.feedback_move_apply(Parameters(input)).await.is_err());
+        assert!(!missing_source.exists());
+    }
+}

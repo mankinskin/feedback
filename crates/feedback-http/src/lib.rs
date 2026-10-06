@@ -62,15 +62,24 @@ fn store_for(
 ) -> Result<EntityFeedbackStore, String> {
     let root = if let Some(workspace) = workspace {
         let workspace =
-            memory_kernel::workspace::validate_explicit_workspace_selector(
+            memory_kernel::workspace::normalize_explicit_workspace_selector(
                 Some(workspace),
             )
             .map_err(|err| err.to_string())?;
-        feedback_api::canonical::resolve_feedback_store_root(std::path::Path::new(workspace))?
+        feedback_api::canonical::resolve_feedback_store_root(&workspace)?
     } else {
         state.store_root.clone()
     };
     Ok(EntityFeedbackStore::new(root))
+}
+
+fn store_for_write(
+    state: &AppState,
+    workspace: Option<&str>,
+) -> Result<EntityFeedbackStore, String> {
+    let selector = memory_kernel::workspace::validate_explicit_workspace_selector(workspace)
+        .map_err(|err| err.to_string())?;
+    store_for(state, Some(selector))
 }
 
 pub fn app(state: AppState) -> Router {
@@ -93,7 +102,7 @@ async fn ingest(
     Json(req): Json<IngestRequest>,
 ) -> Result<Json<FeedbackEntry>, (axum::http::StatusCode, Json<ErrorResponse>)>
 {
-    let store = store_for(&state, req.workspace.as_deref())
+    let store = store_for_write(&state, req.workspace.as_deref())
     .map_err(invalid)?;
     let source = FeedbackSource::from_str(&req.source).map_err(invalid)?;
     let target = EntityUrn::from_str(&req.target).map_err(invalid)?;
@@ -150,7 +159,7 @@ async fn mine(
     Json(req): Json<QueryRequest>,
 ) -> Result<Json<FeedbackEntry>, (axum::http::StatusCode, Json<ErrorResponse>)>
 {
-    let store = store_for(&state, req.workspace.as_deref())
+    let store = store_for_write(&state, req.workspace.as_deref())
     .map_err(invalid)?;
     let target = EntityUrn::from_str(&req.target).map_err(invalid)?;
     let entry = FeedbackEntry::new(
@@ -195,4 +204,59 @@ pub async fn run(
 ) -> Result<(), std::io::Error> {
     let listener = tokio::net::TcpListener::bind(addr).await?;
     axum::serve(listener, app(state)).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn ingest_rejects_omitted_and_ambient_workspace_selectors() {
+        let state = Arc::new(AppState {
+            store_root: PathBuf::from("unused-feedback-fallback"),
+        });
+
+        for selector in [None, Some(""), Some("  "), Some("default"), Some("..")] {
+            let result = ingest(
+                State(state.clone()),
+                Json(IngestRequest {
+                    workspace: selector.map(str::to_string),
+                    source: "agent".to_string(),
+                    target: "ce://default/ticket/selector-test".to_string(),
+                    rating: None,
+                    note: None,
+                    note_kind: None,
+                    session_id: None,
+                    author: None,
+                }),
+            )
+            .await;
+
+            let (status, error) = result.unwrap_err();
+            assert_eq!(status, axum::http::StatusCode::BAD_REQUEST);
+            assert!(error.error.contains("requires an explicit workspace path"));
+        }
+    }
+
+    #[tokio::test]
+    async fn mine_rejects_omitted_and_ambient_workspace_selectors() {
+        let state = Arc::new(AppState {
+            store_root: PathBuf::from("unused-feedback-fallback"),
+        });
+
+        for selector in [None, Some(""), Some("  "), Some("default"), Some("..")] {
+            let result = mine(
+                State(state.clone()),
+                Json(QueryRequest {
+                    workspace: selector.map(str::to_string),
+                    target: "ce://default/ticket/selector-test".to_string(),
+                }),
+            )
+            .await;
+
+            let (status, error) = result.unwrap_err();
+            assert_eq!(status, axum::http::StatusCode::BAD_REQUEST);
+            assert!(error.error.contains("requires an explicit workspace path"));
+        }
+    }
 }
