@@ -100,8 +100,7 @@ impl FeedbackServer {
         let workspace =
             memory_kernel::workspace::normalize_explicit_workspace_selector(Some(workspace))
                 .map_err(|err| McpError::invalid_params(err.to_string(), None))?;
-        EntityFeedbackStore::open(&workspace)
-            .map_err(|err| McpError::internal_error(err, None))
+        EntityFeedbackStore::open(&workspace).map_err(|err| McpError::internal_error(err, None))
     }
 
     fn json_result<T: Serialize>(value: &T) -> Result<CallToolResult, McpError> {
@@ -297,9 +296,9 @@ impl FeedbackServer {
         Parameters(input): Parameters<FeedbackMoveInput>,
     ) -> Result<CallToolResult, McpError> {
         let target_workspace_root =
-            memory_kernel::workspace::normalize_explicit_workspace_selector(
-                Some(&input.to_workspace_root),
-            )
+            memory_kernel::workspace::normalize_explicit_workspace_selector(Some(
+                &input.to_workspace_root,
+            ))
             .map_err(|err| McpError::invalid_params(err.to_string(), None))?;
         let store = self.canonical_store_for(&input.workspace)?;
         let ids = Self::parse_ids(&input.ids)?;
@@ -325,9 +324,9 @@ impl FeedbackServer {
         Parameters(input): Parameters<FeedbackMoveInput>,
     ) -> Result<CallToolResult, McpError> {
         let target_workspace_root =
-            memory_kernel::workspace::normalize_explicit_workspace_selector(
-                Some(&input.to_workspace_root),
-            )
+            memory_kernel::workspace::normalize_explicit_workspace_selector(Some(
+                &input.to_workspace_root,
+            ))
             .map_err(|err| McpError::invalid_params(err.to_string(), None))?;
         let store = self.canonical_store_for(&input.workspace)?;
         let ids = Self::parse_ids(&input.ids)?;
@@ -423,11 +422,8 @@ impl ServerHandler for FeedbackServer {
     }
 }
 
-pub async fn run_mcp_server(
-) -> Result<(), Box<dyn std::error::Error>> {
-    let service = FeedbackServer::new()
-        .serve(stdio())
-        .await?;
+pub async fn run_mcp_server() -> Result<(), Box<dyn std::error::Error>> {
+    let service = FeedbackServer::new().serve(stdio()).await?;
     service.waiting().await?;
     Ok(())
 }
@@ -461,7 +457,8 @@ mod tests {
     fn workspace_validation_rejects_ambient_aliases() {
         let server = FeedbackServer::new();
         for value in ["", "  ", "default", ".."] {
-            let err = server.store_for(value)
+            let err = server
+                .store_for(value)
                 .expect_err("should reject ambient selector");
             let err_msg = err.to_string();
             assert!(

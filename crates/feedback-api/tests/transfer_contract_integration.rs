@@ -10,24 +10,16 @@
 
 use std::{
     fs,
-    path::{
-        Path,
-        PathBuf,
-    },
+    path::{Path, PathBuf},
 };
 
 use feedback_api::canonical::{
-    CanonicalFeedbackEntity,
-    CanonicalFeedbackStore,
-    resolve_feedback_store_root,
+    CanonicalFeedbackEntity, CanonicalFeedbackStore, resolve_feedback_store_root,
 };
 use memory_kernel::ContentKind;
 use uuid::Uuid;
 
-fn run_git(
-    repo_root: &Path,
-    args: &[&str],
-) {
+fn run_git(repo_root: &Path, args: &[&str]) {
     let status = std::process::Command::new("git")
         .current_dir(repo_root)
         .args(args)
@@ -36,10 +28,7 @@ fn run_git(
     assert!(status.success(), "git {args:?} failed: {status}");
 }
 
-fn copy_dir_recursive(
-    from: &Path,
-    to: &Path,
-) {
+fn copy_dir_recursive(from: &Path, to: &Path) {
     fs::create_dir_all(to).unwrap();
     for entry in fs::read_dir(from).unwrap() {
         let entry = entry.unwrap();
@@ -85,7 +74,9 @@ fn feedback_transfer_contract_temporary_root_parity() {
         .expect("feedback crate root")
         .join("test-fixtures")
         .join("transfer-fixture");
-    let fixture_target = workflow_tools_feedback.join("test-fixtures").join("transfer-fixture");
+    let fixture_target = workflow_tools_feedback
+        .join("test-fixtures")
+        .join("transfer-fixture");
     copy_dir_recursive(&fixture_source, &fixture_target);
 
     let source_store = CanonicalFeedbackStore::open(&fixture_target);
@@ -101,7 +92,9 @@ fn feedback_transfer_contract_temporary_root_parity() {
     // `.workflow-tools/<domain>` layout, so pre-create the (empty) container
     // the same way an already-migrated sibling domain would leave it.
     fs::create_dir_all(
-        workflow_tools_feedback.join(".workflow-tools").join("feedback"),
+        workflow_tools_feedback
+            .join(".workflow-tools")
+            .join("feedback"),
     )
     .unwrap();
     let plan = source_store
@@ -111,13 +104,19 @@ fn feedback_transfer_contract_temporary_root_parity() {
     let outcome = source_store.execute_move_set(&plan).unwrap();
     assert!(outcome.journal.entity_ids.contains(&entity_id));
 
-    let canonical_container_store =
-        CanonicalFeedbackStore::new(workflow_tools_feedback.join(".workflow-tools").join("feedback"));
+    let canonical_container_store = CanonicalFeedbackStore::new(
+        workflow_tools_feedback
+            .join(".workflow-tools")
+            .join("feedback"),
+    );
     let migrated = canonical_container_store
         .read_entity(&entity_id)
         .unwrap()
         .expect("entity present in canonical container after apply");
-    assert_eq!(migrated.digest, source_digest, "digest must survive the move");
+    assert_eq!(
+        migrated.digest, source_digest,
+        "digest must survive the move"
+    );
     assert!(
         source_store.read_entity(&entity_id).unwrap().is_none(),
         "source entity removed only after destination persisted"
@@ -138,10 +137,8 @@ fn feedback_transfer_contract_temporary_root_parity() {
         .find(|store| store.kind == ContentKind::Feedback)
         .expect("submodule discovery finds a feedback store");
 
-    let canonical_root_a =
-        fs::canonicalize(&feedback_store_from_root.store_root).unwrap();
-    let canonical_root_b =
-        fs::canonicalize(&feedback_store_from_submodule.store_root).unwrap();
+    let canonical_root_a = fs::canonicalize(&feedback_store_from_root.store_root).unwrap();
+    let canonical_root_b = fs::canonicalize(&feedback_store_from_submodule.store_root).unwrap();
     assert_eq!(
         canonical_root_a, canonical_root_b,
         "root and submodule discovery must resolve to the same physical store_root"
@@ -159,18 +156,29 @@ fn feedback_transfer_contract_temporary_root_parity() {
     // Roll back and compare checksums/chronology before and after.
     let journal_id = outcome.journal.id;
     let rollback_outcome = source_store.rollback_move_set(journal_id).unwrap();
-    assert!(rollback_outcome.journal.rollback_completed_entity_ids.contains(&entity_id));
+    assert!(
+        rollback_outcome
+            .journal
+            .rollback_completed_entity_ids
+            .contains(&entity_id)
+    );
     let restored = source_store
         .read_entity(&entity_id)
         .unwrap()
         .expect("entity restored to the source after rollback");
-    assert_eq!(restored.digest, source_digest, "rollback must restore the exact digest");
+    assert_eq!(
+        restored.digest, source_digest,
+        "rollback must restore the exact digest"
+    );
     assert_eq!(
         restored.legacy_append_ordinal, 0,
         "rollback must restore the exact chronology ordinal"
     );
     assert!(
-        canonical_container_store.read_entity(&entity_id).unwrap().is_none(),
+        canonical_container_store
+            .read_entity(&entity_id)
+            .unwrap()
+            .is_none(),
         "destination entity removed after rollback"
     );
 }
@@ -197,24 +205,19 @@ fn legacy_feedback_store_migrates_to_canonical_root() {
     let canonical = resolve_feedback_store_root(&workspace).unwrap();
     let canonical_store = CanonicalFeedbackStore::new(&canonical);
 
-    assert_eq!(canonical, workspace.join(".workflow-tools").join("feedback"));
+    assert_eq!(
+        canonical,
+        workspace.join(".workflow-tools").join("feedback")
+    );
     assert!(canonical_store.read_entity(&entity_id).unwrap().is_some());
     assert!(!legacy.exists());
 }
 
-fn discovery_tuples(
-    store: &CanonicalFeedbackStore
-) -> Vec<(Uuid, PathBuf, String)> {
+fn discovery_tuples(store: &CanonicalFeedbackStore) -> Vec<(Uuid, PathBuf, String)> {
     store
         .list_entities()
         .unwrap()
         .into_iter()
-        .map(|entity| {
-            (
-                entity.id,
-                store.entity_path(&entity.id),
-                entity.digest,
-            )
-        })
+        .map(|entity| (entity.id, store.entity_path(&entity.id), entity.digest))
         .collect()
 }

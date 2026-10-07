@@ -106,8 +106,9 @@ fn parse_note_kind(raw: Option<String>) -> Result<Option<FeedbackNoteKind>, Stri
 
 fn store(workspace: PathBuf) -> Result<EntityFeedbackStore, String> {
     let selector = workspace.to_string_lossy();
-    let workspace = memory_kernel::workspace::normalize_explicit_workspace_selector(Some(&selector))
-        .map_err(|err| err.to_string())?;
+    let workspace =
+        memory_kernel::workspace::normalize_explicit_workspace_selector(Some(&selector))
+            .map_err(|err| err.to_string())?;
     EntityFeedbackStore::open(&workspace)
 }
 
@@ -307,10 +308,9 @@ fn cmd_move(args: MoveArgs) -> Result<(), String> {
         .to_workspace_root
         .ok_or_else(|| "move requires --to-workspace-root in plan/execute mode".to_string())?;
     let selector = to_workspace_root.to_string_lossy();
-    let to_workspace_root = memory_kernel::workspace::normalize_explicit_workspace_selector(
-        Some(&selector),
-    )
-    .map_err(|err| err.to_string())?;
+    let to_workspace_root =
+        memory_kernel::workspace::normalize_explicit_workspace_selector(Some(&selector))
+            .map_err(|err| err.to_string())?;
     let ids = args
         .ids
         .iter()
@@ -385,10 +385,7 @@ mod move_cli_tests {
         let source_workspace = repo.join("source");
         let target_workspace = repo.join("target");
         std::fs::create_dir_all(&source_workspace).unwrap();
-        std::fs::create_dir_all(
-            target_workspace.join(".workflow-tools").join("feedback"),
-        )
-        .unwrap();
+        std::fs::create_dir_all(target_workspace.join(".workflow-tools").join("feedback")).unwrap();
 
         let source_store = CanonicalFeedbackStore::open(&source_workspace);
         let target = EntityUrn::ticket("demo", "t").unwrap();
@@ -452,10 +449,7 @@ mod move_cli_tests {
         let source_workspace = repo.join("source");
         let target_workspace = repo.join("target");
         std::fs::create_dir_all(&source_workspace).unwrap();
-        std::fs::create_dir_all(
-            target_workspace.join(".workflow-tools").join("feedback"),
-        )
-        .unwrap();
+        std::fs::create_dir_all(target_workspace.join(".workflow-tools").join("feedback")).unwrap();
 
         let source_store = CanonicalFeedbackStore::open(&source_workspace);
         let target = EntityUrn::ticket("demo", "t").unwrap();

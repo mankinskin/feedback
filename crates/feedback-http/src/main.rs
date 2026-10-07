@@ -1,12 +1,6 @@
-use std::{
-    net::SocketAddr,
-    path::PathBuf,
-};
+use std::{net::SocketAddr, path::PathBuf};
 
-use feedback_http::{
-    AppState,
-    run,
-};
+use feedback_http::{AppState, run};
 
 #[tokio::main]
 async fn main() {
@@ -38,13 +32,12 @@ fn resolve_store_root() -> PathBuf {
         Err(error) => {
             eprintln!("Fatal error: {error}");
             std::process::exit(1);
-        },
+        }
     }
 }
 
 fn resolve_addr() -> SocketAddr {
-    let raw = std::env::var("FEEDBACK_HTTP_ADDR")
-        .unwrap_or_else(|_| "127.0.0.1:3222".to_string());
+    let raw = std::env::var("FEEDBACK_HTTP_ADDR").unwrap_or_else(|_| "127.0.0.1:3222".to_string());
     raw.parse()
         .unwrap_or_else(|_| "127.0.0.1:3222".parse().unwrap())
 }

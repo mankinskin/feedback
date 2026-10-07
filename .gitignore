@@ -1,2 +1,12 @@
 **/target/
 **/.worktrees/
+
+# Raw workstation telemetry; curated reports remain trackable.
+**/.feedback/entries/
+**/.workflow-tools/feedback/entries/
+**/.test/**/executions/
+**/.workflow-tools/test/**/executions/
+scan_fingerprints.json
+
+# Deterministic transfer fixtures are source data, not telemetry.
+!test-fixtures/**/.feedback/entries/

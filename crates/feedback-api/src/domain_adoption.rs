@@ -18,6 +18,7 @@
 use std::collections::BTreeMap;
 
 use memory_kernel::{
+    MigrationDryRunReport,
     model::{
         domain::{DomainId, DomainSchemaVersion, EntityTypeId, EntityTypeSchemaVersion},
         domain_manifest::{
@@ -25,10 +26,9 @@ use memory_kernel::{
         },
         entity::EntityId,
     },
-    MigrationDryRunReport,
 };
 
-use crate::{canonical::CanonicalFeedbackEntity, FEEDBACK_SCHEMA_VERSION};
+use crate::{FEEDBACK_SCHEMA_VERSION, canonical::CanonicalFeedbackEntity};
 
 /// The kernel [`DomainId`] under which feedback-api registers itself.
 pub const FEEDBACK_DOMAIN_ID: &str = "feedback";
@@ -104,8 +104,8 @@ mod tests {
 
     use super::*;
     use crate::{
-        canonical::CanonicalFeedbackEntity, EntityUrn, FeedbackEntry, FeedbackProvenance,
-        FeedbackRating, FeedbackSource,
+        EntityUrn, FeedbackEntry, FeedbackProvenance, FeedbackRating, FeedbackSource,
+        canonical::CanonicalFeedbackEntity,
     };
 
     #[test]

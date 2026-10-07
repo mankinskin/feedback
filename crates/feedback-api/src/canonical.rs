@@ -109,7 +109,7 @@ pub fn canonical_entity_id(workspace_path: &Path, legacy_id: &str) -> Uuid {
             let workspace = memory_kernel::workspace::canonicalize_workspace_root(workspace_path);
             let name = format!("{}:{legacy_id}", workspace.to_string_lossy());
             Uuid::new_v5(&FEEDBACK_LEGACY_NAMESPACE, name.as_bytes())
-        },
+        }
     }
 }
 
@@ -123,15 +123,12 @@ pub struct CanonicalFeedbackStore {
 /// Resolve feedback storage at the canonical path, migrating an existing
 /// legacy `.feedback` store on first access.
 pub fn resolve_feedback_store_root(workspace_root: &Path) -> Result<PathBuf, String> {
-    let resolved = memory_kernel::workspace::resolve_store_root_from(
-        workspace_root,
+    let resolved =
+        memory_kernel::workspace::resolve_store_root_from(workspace_root, FEEDBACK_STORE_INDEX_DIR);
+    let canonical_workspace = memory_kernel::workspace::resolve_workspace_root_from_store_root(
+        &resolved,
         FEEDBACK_STORE_INDEX_DIR,
     );
-    let canonical_workspace =
-        memory_kernel::workspace::resolve_workspace_root_from_store_root(
-            &resolved,
-            FEEDBACK_STORE_INDEX_DIR,
-        );
     let canonical = memory_kernel::workspace::canonical_store_root(
         &canonical_workspace,
         FEEDBACK_STORE_INDEX_DIR,
@@ -175,7 +172,10 @@ fn migrate_legacy_feedback_store(legacy: &Path, canonical: &Path) -> Result<(), 
             let destination = canonical_entries.join(entry.file_name());
             if destination.exists() {
                 let source_bytes = fs::read(&source).map_err(|err| {
-                    format!("failed to read legacy feedback entry {}: {err}", source.display())
+                    format!(
+                        "failed to read legacy feedback entry {}: {err}",
+                        source.display()
+                    )
                 })?;
                 let destination_bytes = fs::read(&destination).map_err(|err| {
                     format!(
@@ -190,7 +190,10 @@ fn migrate_legacy_feedback_store(legacy: &Path, canonical: &Path) -> Result<(), 
                     ));
                 }
                 fs::remove_dir_all(&source).map_err(|err| {
-                    format!("failed to remove migrated feedback entry {}: {err}", source.display())
+                    format!(
+                        "failed to remove migrated feedback entry {}: {err}",
+                        source.display()
+                    )
                 })?;
             } else {
                 fs::rename(&source, &destination).map_err(|err| {

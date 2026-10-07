@@ -61,10 +61,8 @@ async fn move_preflight_apply_resume_rollback_routes_preserve_journal_semantics(
     let source_workspace = repo_root.join("source-workspace");
     let target_workspace = repo_root.join("target-workspace");
     std::fs::create_dir_all(&source_workspace).expect("source workspace");
-    std::fs::create_dir_all(
-        target_workspace.join(".workflow-tools").join("feedback"),
-    )
-    .expect("target feedback dir");
+    std::fs::create_dir_all(target_workspace.join(".workflow-tools").join("feedback"))
+        .expect("target feedback dir");
 
     let entity_id = seed_entity(&source_workspace);
     let server = FeedbackServer::new();
@@ -140,7 +138,12 @@ async fn move_targets_reject_ambient_aliases_before_source_access() {
             ids: vec!["7b3a7c62-1f3f-45d6-b8a1-f2b83e3d9f71".to_string()],
             to_workspace_root: selector.to_string(),
         };
-        assert!(server.feedback_move_preflight(Parameters(input)).await.is_err());
+        assert!(
+            server
+                .feedback_move_preflight(Parameters(input))
+                .await
+                .is_err()
+        );
 
         let input = FeedbackMoveInput {
             workspace: missing_source.to_string_lossy().to_string(),
