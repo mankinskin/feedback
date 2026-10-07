@@ -103,6 +103,14 @@ impl FeedbackServer {
         EntityFeedbackStore::open(&workspace).map_err(|err| McpError::internal_error(err, None))
     }
 
+    fn store_for_read(&self, workspace: &str) -> Result<EntityFeedbackStore, McpError> {
+        let workspace =
+            memory_kernel::workspace::normalize_explicit_workspace_selector(Some(workspace))
+                .map_err(|err| McpError::invalid_params(err.to_string(), None))?;
+        EntityFeedbackStore::open_read_only(&workspace)
+            .map_err(|err| McpError::internal_error(err, None))
+    }
+
     fn json_result<T: Serialize>(value: &T) -> Result<CallToolResult, McpError> {
         let text = serde_json::to_string(value)
             .map_err(|err| McpError::internal_error(format!("serialization: {err}"), None))?;
@@ -179,7 +187,7 @@ impl FeedbackServer {
         &self,
         Parameters(input): Parameters<QueryInput>,
     ) -> Result<CallToolResult, McpError> {
-        let store = self.store_for(&input.workspace)?;
+        let store = self.store_for_read(&input.workspace)?;
         let target = EntityUrn::from_str(&input.target)
             .map_err(|err| McpError::invalid_params(err, None))?;
         let entries = store
@@ -207,7 +215,7 @@ impl FeedbackServer {
         &self,
         Parameters(input): Parameters<QueryInput>,
     ) -> Result<CallToolResult, McpError> {
-        let store = self.store_for(&input.workspace)?;
+        let store = self.store_for_read(&input.workspace)?;
         let target = EntityUrn::from_str(&input.target)
             .map_err(|err| McpError::invalid_params(err, None))?;
         let summary = store
@@ -224,7 +232,7 @@ impl FeedbackServer {
         &self,
         Parameters(input): Parameters<SessionQueryInput>,
     ) -> Result<CallToolResult, McpError> {
-        let store = self.store_for(&input.workspace)?;
+        let store = self.store_for_read(&input.workspace)?;
         let summary = store
             .session_summary(&input.session_id, input.turn_sequence)
             .map_err(|err| McpError::internal_error(err, None))?;
@@ -239,7 +247,7 @@ impl FeedbackServer {
         &self,
         Parameters(input): Parameters<AnalyticsInput>,
     ) -> Result<CallToolResult, McpError> {
-        let store = self.store_for(&input.workspace)?;
+        let store = self.store_for_read(&input.workspace)?;
         let assessed_at = input
             .assessed_at
             .map(|value| {
@@ -504,7 +512,7 @@ mod tests {
                 String::from_utf8_lossy(&output.stderr)
             );
 
-            let store = EntityFeedbackStore::open(&selected).unwrap();
+            let store = EntityFeedbackStore::open_read_only(&selected).unwrap();
             let target = EntityUrn::from_str(TARGET).unwrap();
             let entries = store.entries_for(&target).unwrap();
             assert_eq!(entries.len(), 1);

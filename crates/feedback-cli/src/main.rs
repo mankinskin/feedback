@@ -104,12 +104,22 @@ fn parse_note_kind(raw: Option<String>) -> Result<Option<FeedbackNoteKind>, Stri
         .transpose()
 }
 
-fn store(workspace: PathBuf) -> Result<EntityFeedbackStore, String> {
+fn store(
+    workspace: PathBuf,
+    access_mode: memory_kernel::domain_store::StoreAccessMode,
+) -> Result<EntityFeedbackStore, String> {
     let selector = workspace.to_string_lossy();
     let workspace =
         memory_kernel::workspace::normalize_explicit_workspace_selector(Some(&selector))
             .map_err(|err| err.to_string())?;
-    EntityFeedbackStore::open(&workspace)
+    match access_mode {
+        memory_kernel::domain_store::StoreAccessMode::ReadOnly => {
+            EntityFeedbackStore::open_read_only(&workspace)
+        }
+        memory_kernel::domain_store::StoreAccessMode::CreateOrOpen => {
+            EntityFeedbackStore::open(&workspace)
+        }
+    }
 }
 
 fn main() {
@@ -132,7 +142,10 @@ fn run() -> Result<(), String> {
             session_id,
             author,
         } => {
-            let store = store(workspace)?;
+            let store = store(
+                workspace,
+                memory_kernel::domain_store::StoreAccessMode::CreateOrOpen,
+            )?;
             let source = FeedbackSource::from_str(&source)?;
             let target = EntityUrn::from_str(&target)?;
             let rating = parse_rating(rating)?;
@@ -147,7 +160,10 @@ fn run() -> Result<(), String> {
             Ok(())
         }
         Command::Inbox { workspace, target } => {
-            let store = store(workspace)?;
+            let store = store(
+                workspace,
+                memory_kernel::domain_store::StoreAccessMode::ReadOnly,
+            )?;
             let target = EntityUrn::from_str(&target)?;
             let entries = store.entries_for(&target)?;
             println!(
@@ -157,7 +173,10 @@ fn run() -> Result<(), String> {
             Ok(())
         }
         Command::Summary { workspace, target } => {
-            let store = store(workspace)?;
+            let store = store(
+                workspace,
+                memory_kernel::domain_store::StoreAccessMode::ReadOnly,
+            )?;
             let target = EntityUrn::from_str(&target)?;
             let summary = store.summary_for(&target)?;
             println!(
@@ -171,7 +190,10 @@ fn run() -> Result<(), String> {
             assessed_at,
             format,
         } => {
-            let store = store(workspace)?;
+            let store = store(
+                workspace,
+                memory_kernel::domain_store::StoreAccessMode::ReadOnly,
+            )?;
             let assessed_at = parse_assessed_at(assessed_at)?;
             let report = store.analytics_at(assessed_at)?;
             print_analytics(&report, &format)
@@ -182,7 +204,10 @@ fn run() -> Result<(), String> {
             transcript,
             author,
         } => {
-            let store = store(workspace)?;
+            let store = store(
+                workspace,
+                memory_kernel::domain_store::StoreAccessMode::CreateOrOpen,
+            )?;
             let target = EntityUrn::from_str(&target)?;
             let author_id = author.unwrap_or_else(|| "transcript-miner".to_string());
             let _author = IngestAuthor::privileged_agent(author_id.clone())?;
@@ -362,9 +387,53 @@ mod move_cli_tests {
     #[test]
     fn store_rejects_ambient_workspace_aliases() {
         for selector in ["", "  ", "default", ".."] {
-            let error = store(PathBuf::from(selector)).unwrap_err();
+            let error = store(
+                PathBuf::from(selector),
+                memory_kernel::domain_store::StoreAccessMode::CreateOrOpen,
+            )
+            .unwrap_err();
             assert!(error.contains("requires an explicit workspace path"));
         }
+    }
+
+    #[test]
+    fn selected_workspace_store_creates_and_reads_back_only_its_canonical_entry() {
+        let parent = tempfile::tempdir().unwrap();
+        let selected = parent.path().join("selected");
+        let sibling = parent.path().join("sibling");
+        std::fs::create_dir_all(&selected).unwrap();
+        std::fs::create_dir_all(&sibling).unwrap();
+        let target = EntityUrn::ticket("default", "cli-selected-store").unwrap();
+        let entry = FeedbackEntry::new(
+            FeedbackSource::Agent,
+            target.clone(),
+            Some(FeedbackRating::Helpful),
+            Some("cli selected store".to_string()),
+            None,
+            FeedbackProvenance::new(None, Some("test".to_string()), None).unwrap(),
+        )
+        .unwrap();
+
+        store(
+            selected.clone(),
+            memory_kernel::domain_store::StoreAccessMode::CreateOrOpen,
+        )
+        .unwrap()
+        .record_entry(entry.clone())
+        .unwrap();
+        assert_eq!(
+            store(
+                selected.clone(),
+                memory_kernel::domain_store::StoreAccessMode::ReadOnly,
+            )
+            .unwrap()
+            .entries_for(&target)
+            .unwrap(),
+            vec![entry]
+        );
+        assert!(selected.join(".workflow-tools/feedback/entries").is_dir());
+        assert!(!parent.path().join(".workflow-tools/feedback").exists());
+        assert!(!sibling.join(".workflow-tools/feedback").exists());
     }
 
     fn init_git(root: &std::path::Path) {

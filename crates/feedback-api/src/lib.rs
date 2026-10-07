@@ -4,6 +4,7 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 
 pub mod analytics;
+pub mod domain_store;
 
 mod feedback_store;
 mod frontend;
@@ -803,7 +804,7 @@ impl SessionFeedbackSummary {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EntityFeedbackStore {
-    root: PathBuf,
+    pub(crate) root: PathBuf,
 }
 
 fn normalize_required(value: String, field: &str) -> Result<String, String> {

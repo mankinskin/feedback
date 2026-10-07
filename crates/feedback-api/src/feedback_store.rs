@@ -7,9 +7,20 @@ impl EntityFeedbackStore {
     }
 
     pub fn open(workspace_root: &std::path::Path) -> Result<Self, String> {
-        Ok(Self::new(canonical::resolve_feedback_store_root(
+        let resolution = crate::domain_store::FeedbackStoreConfig::resolve_workspace_store(
             workspace_root,
-        )?))
+            memory_kernel::domain_store::StoreAccessMode::CreateOrOpen,
+        )?;
+        Ok(Self::new(resolution.store_root))
+    }
+
+    /// Open an existing selected workspace without initializing a missing store.
+    pub fn open_read_only(workspace_root: &std::path::Path) -> Result<Self, String> {
+        let resolution = crate::domain_store::FeedbackStoreConfig::resolve_workspace_store(
+            workspace_root,
+            memory_kernel::domain_store::StoreAccessMode::ReadOnly,
+        )?;
+        Ok(Self::new(resolution.store_root))
     }
 
     /// Return the concrete workspace that owns this feedback store.

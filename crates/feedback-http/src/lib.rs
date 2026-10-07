@@ -44,7 +44,7 @@ fn store_for(state: &AppState, workspace: Option<&str>) -> Result<EntityFeedback
         let workspace =
             memory_kernel::workspace::normalize_explicit_workspace_selector(Some(workspace))
                 .map_err(|err| err.to_string())?;
-        feedback_api::canonical::resolve_feedback_store_root(&workspace)?
+        return EntityFeedbackStore::open_read_only(&workspace);
     } else {
         state.store_root.clone()
     };
@@ -52,12 +52,12 @@ fn store_for(state: &AppState, workspace: Option<&str>) -> Result<EntityFeedback
 }
 
 fn store_for_write(
-    state: &AppState,
+    _state: &AppState,
     workspace: Option<&str>,
 ) -> Result<EntityFeedbackStore, String> {
     let selector = memory_kernel::workspace::validate_explicit_workspace_selector(workspace)
         .map_err(|err| err.to_string())?;
-    store_for(state, Some(selector))
+    EntityFeedbackStore::open(std::path::Path::new(selector))
 }
 
 pub fn app(state: AppState) -> Router {
@@ -213,5 +213,50 @@ mod tests {
             assert_eq!(status, axum::http::StatusCode::BAD_REQUEST);
             assert!(error.error.contains("requires an explicit workspace path"));
         }
+    }
+
+    #[tokio::test]
+    async fn selected_workspace_ingest_reads_back_only_from_its_canonical_store() {
+        let parent = tempfile::tempdir().unwrap();
+        let selected = parent.path().join("selected");
+        let sibling = parent.path().join("sibling");
+        std::fs::create_dir_all(&selected).unwrap();
+        std::fs::create_dir_all(&sibling).unwrap();
+        let state = Arc::new(AppState {
+            store_root: parent.path().join("ambient-feedback"),
+        });
+        let target = "ce://default/ticket/http-selected-store";
+
+        let _persisted = ingest(
+            State(state.clone()),
+            Json(IngestRequest {
+                workspace: Some(selected.to_string_lossy().into_owned()),
+                source: "agent".to_string(),
+                target: target.to_string(),
+                rating: Some("helpful".to_string()),
+                note: Some("http selected store".to_string()),
+                note_kind: None,
+                session_id: None,
+                author: Some("test".to_string()),
+            }),
+        )
+        .await
+        .unwrap();
+        let entries = inbox(
+            State(state),
+            Json(QueryRequest {
+                workspace: Some(selected.to_string_lossy().into_owned()),
+                target: target.to_string(),
+            }),
+        )
+        .await
+        .unwrap()
+        .0;
+
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].note_text.as_deref(), Some("http selected store"));
+        assert!(selected.join(".workflow-tools/feedback/entries").is_dir());
+        assert!(!parent.path().join(".workflow-tools/feedback").exists());
+        assert!(!sibling.join(".workflow-tools/feedback").exists());
     }
 }
