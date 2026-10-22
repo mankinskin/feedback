@@ -13,6 +13,9 @@ pub mod canonical;
 pub mod domain_adoption;
 pub mod move_domain;
 
+#[cfg(test)]
+mod entity_urn_tests;
+
 pub use frontend::{FrontendFeedbackSubmission, ingest_frontend_feedback};
 
 pub const FEEDBACK_SCHEMA_VERSION: u32 = 2;
@@ -466,11 +469,31 @@ impl FeedbackSummary {
     }
 }
 
+/// Canonical scheme emitted for repository entities.
+pub const ENTITY_URN_SCHEME: &str = "entity";
+/// Legacy scheme still accepted when parsing repository entities.
+pub const LEGACY_ENTITY_URN_SCHEME: &str = "ce";
+
+/// A feedback target: either a repository entity
+/// (`entity://<workspace>/<store>/<entity>`, legacy `ce://` accepted) or any
+/// other well-formed `<scheme>://<value>` reference such as `file://` or
+/// `tool://`.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct EntityUrn {
-    workspace: String,
-    store: String,
-    entity: String,
+#[serde(transparent)]
+pub struct EntityUrn(EntityUrnKind);
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(untagged)]
+enum EntityUrnKind {
+    Entity {
+        workspace: String,
+        store: String,
+        entity: String,
+    },
+    External {
+        scheme: String,
+        value: String,
+    },
 }
 
 impl EntityUrn {
@@ -479,36 +502,76 @@ impl EntityUrn {
         store: impl Into<String>,
         entity: impl Into<String>,
     ) -> Result<Self, String> {
-        let workspace = normalize_required(workspace.into(), "workspace")?;
+        let workspace = workspace.into().trim().to_string();
+        if workspace.is_empty() {
+            return Err("entity urn workspace segment cannot be empty".to_string());
+        }
         let store = normalize_required(store.into(), "store")?;
         let entity = normalize_required(entity.into(), "entity")?;
 
-        Ok(Self {
+        Ok(Self(EntityUrnKind::Entity {
             workspace,
             store,
             entity,
-        })
+        }))
     }
 
+    /// Builds a non-entity reference such as `file://C:/x.rs`.
+    pub fn external(scheme: impl Into<String>, value: impl Into<String>) -> Result<Self, String> {
+        let scheme = scheme.into();
+        if !is_valid_scheme(&scheme) {
+            return Err(format!(
+                "invalid urn scheme '{scheme}', expected [A-Za-z][A-Za-z0-9+.-]*"
+            ));
+        }
+        let value = value.into().trim().to_string();
+        if value.is_empty() {
+            return Err("external urn value cannot be empty".to_string());
+        }
+        Ok(Self(EntityUrnKind::External { scheme, value }))
+    }
+
+    /// Whether this is a repository entity rather than an external reference.
+    pub fn is_entity(&self) -> bool {
+        matches!(self.0, EntityUrnKind::Entity { .. })
+    }
+
+    /// Workspace of an entity target; empty for external references.
     pub fn workspace(&self) -> &str {
-        &self.workspace
+        match &self.0 {
+            EntityUrnKind::Entity { workspace, .. } => workspace,
+            EntityUrnKind::External { .. } => "",
+        }
     }
 
+    /// Store of an entity target, or the scheme of an external reference.
     pub fn store(&self) -> &str {
-        &self.store
+        match &self.0 {
+            EntityUrnKind::Entity { store, .. } => store,
+            EntityUrnKind::External { scheme, .. } => scheme,
+        }
     }
 
+    /// Entity id of an entity target, or the value of an external reference.
     pub fn entity(&self) -> &str {
-        &self.entity
+        match &self.0 {
+            EntityUrnKind::Entity { entity, .. } => entity,
+            EntityUrnKind::External { value, .. } => value,
+        }
     }
 
     pub fn as_str(&self) -> String {
-        format!(
-            "ce://{}/{}/{}",
-            encode_urn_segment(&self.workspace),
-            self.store,
-            self.entity
-        )
+        match &self.0 {
+            EntityUrnKind::Entity {
+                workspace,
+                store,
+                entity,
+            } => format!(
+                "{ENTITY_URN_SCHEME}://{}/{store}/{entity}",
+                encode_urn_segment(workspace)
+            ),
+            EntityUrnKind::External { scheme, value } => format!("{scheme}://{value}"),
+        }
     }
 
     pub fn rule(workspace: impl Into<String>, entity: impl Into<String>) -> Result<Self, String> {
@@ -535,11 +598,16 @@ impl FromStr for EntityUrn {
 
     fn from_str(value: &str) -> Result<Self, Self::Err> {
         let trimmed = value.trim();
-        let Some(rest) = trimmed.strip_prefix("ce://") else {
+        let Some((scheme, rest)) = trimmed.split_once("://") else {
             return Err(format!(
-                "invalid entity urn '{trimmed}', expected ce://<workspace>/<store>/<entity>"
+                "invalid urn '{trimmed}', expected entity://<workspace>/<store>/<entity> \
+                 or <scheme>://<value>"
             ));
         };
+        if scheme != ENTITY_URN_SCHEME && scheme != LEGACY_ENTITY_URN_SCHEME {
+            return Self::external(scheme, rest)
+                .map_err(|error| format!("invalid urn '{trimmed}': {error}"));
+        }
         let mut parts = rest.split('/');
         let workspace = parts.next().unwrap_or_default();
         let store = parts.next().unwrap_or_default();
@@ -552,6 +620,12 @@ impl FromStr for EntityUrn {
 
         Self::new(decode_urn_segment(workspace)?, store, entity)
     }
+}
+
+fn is_valid_scheme(scheme: &str) -> bool {
+    let mut chars = scheme.chars();
+    matches!(chars.next(), Some(first) if first.is_ascii_alphabetic())
+        && chars.all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '.' | '-'))
 }
 
 fn encode_urn_segment(value: &str) -> String {

@@ -20,6 +20,9 @@ pub struct IngestInput {
     /// Concrete workspace path, repo root, .feedback store path, or path inside that store. Do not use omitted, empty, 'default', or '..' for entity creation; use '.' explicitly to target the MCP server process's current working directory.
     pub workspace: String,
     pub source: String,
+    /// Feedback target: an entity URN `entity://<workspace>/<store>/<entity>`
+    /// (legacy `ce://` accepted) or an external reference such as
+    /// `file:///path/to/file`, `tool://<server>/<tool>`, or `https://...`.
     pub target: String,
     #[serde(default)]
     pub rating: Option<String>,
@@ -42,6 +45,8 @@ pub struct IngestInput {
 pub struct QueryInput {
     /// Concrete workspace path, repo root, .feedback store path, or path inside that store. Do not use omitted, empty, 'default', or '..' for entity creation; use '.' explicitly to target the MCP server process's current working directory.
     pub workspace: String,
+    /// Feedback target in the same form accepted by `feedback_ingest`
+    /// (`entity://...`, legacy `ce://...`, or an external `file://`/`tool://`/`https://` reference).
     pub target: String,
 }
 
