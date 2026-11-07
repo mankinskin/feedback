@@ -15,20 +15,40 @@ use rmcp::{
 };
 use serde::{Deserialize, Serialize};
 
+#[cfg(test)]
+mod contract_tests {
+    use super::*;
+
+    #[test]
+    fn advertised_feedback_contracts_expose_selectors_and_placeholder_mining() {
+        let tools = FeedbackServer::tool_router().list_all();
+        assert_eq!(tools.len(), 11);
+        for tool in &tools {
+            assert!(tool.description.as_deref().unwrap().contains("Explicit workspace"));
+        }
+        let mine = tools.iter().find(|tool| tool.name == "feedback_mine").unwrap();
+        assert!(mine.description.as_deref().unwrap().contains("fixed placeholder"));
+    }
+}
+
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct IngestInput {
-    /// Concrete workspace path, repo root, .feedback store path, or path inside that store. Do not use omitted, empty, 'default', or '..' for entity creation; use '.' explicitly to target the MCP server process's current working directory.
+    /// Explicit workspace root or feedback store path required on every tool; omitted/empty/default/.. rejected; . means server cwd. Writes use canonical .workflow-tools/feedback; reads never create missing stores.
     pub workspace: String,
+    /// agent/user/frontend/transcript-mined/system (case-insensitive); transcript_mined and mined are aliases.
     pub source: String,
     /// Feedback target: an entity URN `entity://<workspace>/<store>/<entity>`
     /// (legacy `ce://` accepted) or an external reference such as
     /// `file:///path/to/file`, `tool://<server>/<tool>`, or `https://...`.
     pub target: String,
     #[serde(default)]
+    /// helpful/mixed/not-helpful; supply rating or a nonempty note.
     pub rating: Option<String>,
     #[serde(default)]
+    /// Trimmed text; empty counts as absent.
     pub note: Option<String>,
     #[serde(default)]
+    /// note/suggestion; requires note, defaults note when text is supplied.
     pub note_kind: Option<String>,
     #[serde(default)]
     pub session_id: Option<String>,
@@ -43,7 +63,7 @@ pub struct IngestInput {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct QueryInput {
-    /// Concrete workspace path, repo root, .feedback store path, or path inside that store. Do not use omitted, empty, 'default', or '..' for entity creation; use '.' explicitly to target the MCP server process's current working directory.
+    /// Explicit workspace root or feedback store path required for this input; omitted/empty/default/.. rejected; . means server cwd. Writes use canonical .workflow-tools/feedback; reads do not create missing stores.
     pub workspace: String,
     /// Feedback target in the same form accepted by `feedback_ingest`
     /// (`entity://...`, legacy `ce://...`, or an external `file://`/`tool://`/`https://` reference).
@@ -147,7 +167,7 @@ impl FeedbackServer {
 impl FeedbackServer {
     #[tool(
         name = "feedback_ingest",
-        description = "Persist a feedback entry in the feedback-api store."
+        description = "Create a fresh UUID feedback entry each call (not idempotent), initializing the selected store if absent. At least one rating or trimmed nonempty note required; note_kind requires note and defaults note. source/rating/note_kind are case-insensitive; attribution is provenance, not authority. Returns persisted entry with status new. Explicit workspace root or feedback store path required; omitted/empty/default/.. rejected, . means server cwd. Reads require an existing store; writes use canonical .workflow-tools/feedback."
     )]
     pub async fn feedback_ingest(
         &self,
@@ -186,7 +206,7 @@ impl FeedbackServer {
 
     #[tool(
         name = "feedback_inbox",
-        description = "List persisted feedback entries for a target entity URN."
+        description = "Read all feedback for target, unpaginated in creation order. Does not create a missing store. Explicit workspace root or feedback store path required; omitted/empty/default/.. rejected, . means server cwd. Reads require an existing store; writes use canonical .workflow-tools/feedback."
     )]
     pub async fn feedback_inbox(
         &self,
@@ -203,7 +223,7 @@ impl FeedbackServer {
 
     #[tool(
         name = "feedback_query",
-        description = "Alias for feedback_inbox; lists entries for a target URN."
+        description = "Read feedback matching supplied target, unpaginated in creation order. Does not create a missing store. Explicit workspace root or feedback store path required; omitted/empty/default/.. rejected, . means server cwd. Reads require an existing store; writes use canonical .workflow-tools/feedback."
     )]
     pub async fn feedback_query(
         &self,
@@ -214,7 +234,7 @@ impl FeedbackServer {
 
     #[tool(
         name = "feedback_summary",
-        description = "Return aggregate usage/rating summary for a target entity URN."
+        description = "Read target feedback rollup without creating a store; includes counts and unresolved notes. This is not a new audit or a mutation. Explicit workspace root or feedback store path required; omitted/empty/default/.. rejected, . means server cwd. Reads require an existing store; writes use canonical .workflow-tools/feedback."
     )]
     pub async fn feedback_summary(
         &self,
@@ -231,7 +251,7 @@ impl FeedbackServer {
 
     #[tool(
         name = "feedback_session_summary",
-        description = "List feedback entries and a compact rollup for one session_id, optionally narrowed to a best-effort turn_sequence, so an agent can surface end-of-turn feedback visibility without a target entity URN."
+        description = "List feedback entries and a compact rollup for one session_id, optionally narrowed to a best-effort turn_sequence, so an agent can surface end-of-turn feedback visibility without a target entity URN. Explicit workspace root or feedback store path required; omitted/empty/default/.. rejected, . means server cwd. Reads require an existing store; writes use canonical .workflow-tools/feedback."
     )]
     pub async fn feedback_session_summary(
         &self,
@@ -246,7 +266,7 @@ impl FeedbackServer {
 
     #[tool(
         name = "feedback_analytics",
-        description = "Return a read-only current-schema feedback analytics report."
+        description = "Return a read-only current-schema feedback analytics report. Explicit workspace root or feedback store path required; omitted/empty/default/.. rejected, . means server cwd. Reads require an existing store; writes use canonical .workflow-tools/feedback."
     )]
     pub async fn feedback_analytics(
         &self,
@@ -275,7 +295,7 @@ impl FeedbackServer {
 
     #[tool(
         name = "feedback_mine",
-        description = "Persist a transcript-mined feedback entry from supplied note text and target URN."
+        description = "Record a fixed placeholder entry: source transcript-mined, rating mixed, suggestion note transcript-mined signal, author feedback-mcp. Does not read a transcript or accept note text; not semantic transcript mining. Explicit workspace root or feedback store path required; omitted/empty/default/.. rejected, . means server cwd. Reads require an existing store; writes use canonical .workflow-tools/feedback."
     )]
     pub async fn feedback_mine(
         &self,
@@ -302,7 +322,7 @@ impl FeedbackServer {
 
     #[tool(
         name = "feedback_move_preflight",
-        description = "Read-only preflight plan for moving a set of canonical feedback entities to another workspace store."
+        description = "Read-only entity-set move preflight. ids are canonical feedback UUIDs, deduplicated; empty selection fails. Returns selected entity_ids/target_store_root/blockers; no apply authority. Explicit workspace root or feedback store path required; omitted/empty/default/.. rejected, . means server cwd. Reads require an existing store; writes use canonical .workflow-tools/feedback."
     )]
     pub async fn feedback_move_preflight(
         &self,
@@ -330,7 +350,7 @@ impl FeedbackServer {
 
     #[tool(
         name = "feedback_move_apply",
-        description = "Execute a supported feedback entity-set move to another workspace store."
+        description = "Re-plan and execute a feedback entity-set move; blocked plan fails. Mutates source/destination. Retain returned journal_id/phase/entity_ids for recovery; do not blindly replay apply. Explicit workspace root or feedback store path required; omitted/empty/default/.. rejected, . means server cwd. Reads require an existing store; writes use canonical .workflow-tools/feedback."
     )]
     pub async fn feedback_move_apply(
         &self,
@@ -367,7 +387,7 @@ impl FeedbackServer {
 
     #[tool(
         name = "feedback_move_resume",
-        description = "Resume an interrupted feedback entity-set move from its journal id."
+        description = "Resume an interrupted feedback move; id is the move journal UUID returned by feedback_move_apply, not feedback entry UUID. Explicit workspace root or feedback store path required; omitted/empty/default/.. rejected, . means server cwd. Reads require an existing store; writes use canonical .workflow-tools/feedback."
     )]
     pub async fn feedback_move_resume(
         &self,
@@ -392,7 +412,7 @@ impl FeedbackServer {
 
     #[tool(
         name = "feedback_move_rollback",
-        description = "Roll back a completed or partially completed feedback entity-set move."
+        description = "Roll back a feedback move; id is the move journal UUID returned by feedback_move_apply, not feedback entry UUID. Explicit workspace root or feedback store path required; omitted/empty/default/.. rejected, . means server cwd. Reads require an existing store; writes use canonical .workflow-tools/feedback."
     )]
     pub async fn feedback_move_rollback(
         &self,
