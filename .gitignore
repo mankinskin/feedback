@@ -8,5 +8,14 @@
 **/.workflow-tools/test/**/executions/
 scan_fingerprints.json
 
+# Transient store controls; keep Cargo.lock and durable feedback trackable.
+.*.lock
+*.flock
+.*-lock
+*.tmp
+.*.tmp-*
+.tmp-*
+move-locks/
+
 # Deterministic transfer fixtures are source data, not telemetry.
 !test-fixtures/**/.feedback/entries/
